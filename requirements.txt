@@ -1,0 +1,24 @@
+langchain>=0.1.0
+langchain-ollama>=0.1.0
+langchain-mistralai>=0.1.0
+langchain-community>=0.0.20
+langchain-text-splitters>=0.0.1
+langgraph>=0.0.20
+langgraph-checkpoint-postgres>=1.0.0
+psycopg[binary]>=3.0.0
+psycopg2-binary>=2.9.0
+python-dotenv>=1.0.0
+
+# RAG - Vector Store
+langchain-postgres>=0.0.1
+pgvector>=0.2.0
+pypdf>=3.0.0
+
+# Backend API
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+broadcaster[redis]>=0.3.0
+sse-starlette>=2.0.0
+redis>=5.0.0
+httpx>=0.25.0
+pydantic[email]>=2.0.0

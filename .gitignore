@@ -1,0 +1,27 @@
+# Fichiers de base de données SQLite
+*.db
+*.db-shm
+*.db-wal
+
+# Cache Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Variables d'environnement
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+venv/
+node_modules/
+documents/
