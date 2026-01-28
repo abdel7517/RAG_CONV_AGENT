@@ -51,7 +51,7 @@ class SimpleAgent:
     - Le streaming des reponses token par token
     """
 
-    SUPPORTED_PROVIDERS = ["ollama", "mistral"]
+    SUPPORTED_PROVIDERS = ["ollama", "mistral", "openai"]
 
     def __init__(self, llm_provider: str = None, enable_rag: bool = False):
         """
@@ -126,12 +126,32 @@ class SimpleAgent:
             streaming=True
         )
 
+    def _init_llm_openai(self):
+        """Initialise le LLM avec OpenAI API."""
+        from langchain_openai import ChatOpenAI
+
+        if not settings.OPENAI_API_KEY:
+            raise LLMProviderError(
+                "OPENAI_API_KEY n'est pas definie.\n"
+                "Ajoutez votre cle API OpenAI dans le fichier .env:\n"
+                "OPENAI_API_KEY=votre_cle_api"
+            )
+
+        self.llm = ChatOpenAI(
+            model=settings.OPENAI_MODEL,
+            api_key=settings.OPENAI_API_KEY,
+            temperature=settings.MODEL_TEMPERATURE,
+            streaming=True
+        )
+
     def _init_llm(self):
         """Initialise le modele de langage selon le provider configure."""
         if self.llm_provider == "ollama":
             self._init_llm_ollama()
         elif self.llm_provider == "mistral":
             self._init_llm_mistral()
+        elif self.llm_provider == "openai":
+            self._init_llm_openai()
         else:
             raise LLMProviderError(
                 f"Provider LLM inconnu: '{self.llm_provider}'\n"
