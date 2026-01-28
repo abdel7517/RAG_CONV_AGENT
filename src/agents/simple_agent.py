@@ -75,6 +75,9 @@ class SimpleAgent:
         self.retriever = None
         self.search_tool = None
 
+        # Cache d'agents par company_id (pour prompts personnalises)
+        self._agents_cache: dict = {}
+
     def _check_ollama_connection(self) -> bool:
         """
         Verifie que Ollama est accessible.
@@ -184,6 +187,81 @@ class SimpleAgent:
 
         logger.info("Composants RAG initialises")
 
+    async def _setup_company_context(self, company_id: str) -> None:
+        """
+        Configure l'agent personnalise pour l'entreprise.
+
+        Recupere les infos entreprise depuis PostgreSQL et cree un agent
+        avec le prompt personnalise si necessaire.
+
+        Optimisation: Query DB uniquement si l'agent n'est pas deja en cache.
+
+        Args:
+            company_id: ID de l'entreprise
+        """
+        # Si l'agent existe deja dans le cache, pas besoin de query DB
+        if company_id in self._agents_cache:
+            return
+
+        # Sinon, recuperer les infos entreprise et creer l'agent
+        from src.repositories.company_repository import CompanyRepository
+
+        repo = CompanyRepository()
+        company = await repo.get_by_id(company_id)
+
+        if company:
+            logger.info(f"Creation agent personnalise pour {company.name} ({company_id})")
+            self._create_agent_for_company(company.name, company.tone, company_id)
+        else:
+            logger.warning(f"Entreprise inconnue: {company_id}, utilisation du prompt par defaut")
+
+    def _create_agent_for_company(self, company_name: str, tone: str, company_id: str) -> None:
+        """
+        Cree un agent avec un prompt personnalise pour une entreprise.
+
+        Args:
+            company_name: Nom de l'entreprise
+            tone: Ton du chatbot
+            company_id: ID pour le cache
+        """
+        from src.tools.rag_tools import RAGAgentState
+
+        try:
+            tools = [self.search_tool] if self.search_tool else []
+
+            # Formater le prompt avec les infos entreprise
+            system_prompt = settings.format_rag_prompt(company_name, tone)
+
+            agent = create_agent(
+                model=self.llm,
+                tools=tools,
+                system_prompt=system_prompt,
+                state_schema=RAGAgentState,  # Schema d'etat avec company_id pour InjectedState
+                checkpointer=self.memory
+            )
+
+            self._agents_cache[company_id] = agent
+            logger.info(f"Agent personnalise cree pour {company_name}")
+
+        except Exception as e:
+            logger.error(f"Erreur creation agent pour {company_id}: {e}")
+            # Fallback sur l'agent par defaut
+            self._agents_cache[company_id] = self.agent
+
+    def _get_current_agent(self, company_id: str = None):
+        """
+        Retourne l'agent approprie selon le company_id.
+
+        Args:
+            company_id: ID de l'entreprise (passe explicitement pour etre thread-safe)
+
+        Returns:
+            L'agent personnalise si disponible, sinon l'agent par defaut
+        """
+        if company_id and company_id in self._agents_cache:
+            return self._agents_cache[company_id]
+        return self.agent
+
     def _create_agent(self):
         """
         Crée l'agent LangGraph avec ou sans RAG.
@@ -252,13 +330,14 @@ class SimpleAgent:
         mode = "RAG" if self.enable_rag else "Simple"
         logger.info(f"Agent initialise en mode {mode}")
 
-    async def chat(self, user_input: str, thread_id: str = "conversation-1"):
+    async def chat(self, user_input: str, thread_id: str = "conversation-1", company_id: str = None):
         """
         Envoie un message et stream la reponse.
 
         Args:
             user_input: Message de l'utilisateur
             thread_id: Identifiant de la conversation
+            company_id: ID de l'entreprise pour le filtrage multi-tenant (optionnel)
 
         Yields:
             str: Tokens de la reponse au fur et a mesure
@@ -266,7 +345,7 @@ class SimpleAgent:
         Raises:
             AgentError: Si l'agent n'est pas initialise ou si une erreur survient
         """
-        logger.debug(f"chat() appelee - user_input: {user_input[:100]}..., thread_id: {thread_id}")
+        logger.debug(f"chat() appelee - user_input: {user_input[:100]}..., thread_id: {thread_id}, company_id: {company_id}")
 
         if not self._initialized:
             logger.debug("Agent non initialise - levee d'exception")
@@ -276,10 +355,17 @@ class SimpleAgent:
         logger.debug(f"Configuration agent: {config}")
         logger.debug(f"Demarrage du streaming avec le LLM provider: {self.llm_provider}")
 
+        # Preparer l'etat avec company_id pour InjectedState
+        input_state = {"messages": [HumanMessage(content=user_input)]}
+        if company_id:
+            input_state["company_id"] = company_id
+
         try:
+            # Utiliser l'agent personnalise si disponible (multi-tenant)
+            current_agent = self._get_current_agent(company_id)
             logger.debug("Appel de agent.astream()...")
-            async for message_chunk, _ in self.agent.astream(
-                {"messages": [HumanMessage(content=user_input)]},
+            async for message_chunk, _ in current_agent.astream(
+                input_state,
                 config=config,
                 stream_mode="messages"
             ):
@@ -321,12 +407,6 @@ class SimpleAgent:
             inbox_pattern: Pattern pour les messages entrants (defaut: "inbox:*")
             outbox_prefix: Prefixe pour les canaux de sortie (defaut: "outbox:")
 
-        Example:
-            >>> from src.messaging import create_channel
-            >>> channel = create_channel("redis", url="redis://localhost:6379")
-            >>> agent = SimpleAgent()
-            >>> await agent.initialize()
-            >>> await agent.serve(channel)
         """
         # Auto-initialisation si necessaire
         if not self._initialized:
@@ -364,13 +444,12 @@ class SimpleAgent:
 
             logger.info(f"Message de {email} (company: {company_id}): {user_message[:50]}...")
 
-            # Définir le company_id pour le tool search_documents (filtrage RAG)
+            # Configurer le contexte entreprise pour le RAG (filtrage + prompt personnalise)
             if self.enable_rag and company_id:
-                from src.tools.rag_tools import set_current_company_id
-                set_current_company_id(company_id)
+                await self._setup_company_context(company_id)
 
             try:
-                async for chunk in self.chat(user_message, thread_id=email):
+                async for chunk in self.chat(user_message, thread_id=email, company_id=company_id):
                     logger.debug(f"PUBLISH {outbox}: chunk='{chunk[:50]}...' done=False")
                     await channel.publish(outbox, {"chunk": chunk, "done": False})
 

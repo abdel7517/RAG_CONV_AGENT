@@ -57,8 +57,54 @@ class Settings:
         "Si l'information n'est pas disponible dans les documents, indiquez-le poliment au client."
     )
 
+    # === TEMPLATE PROMPT RAG PERSONNALISE (Multi-tenant) ===
+    DEFAULT_SYSTEM_PROMPT_RAG_TEMPLATE: str = """Tu es un chatbot conversationnel de {company_name}.
+
+CONTEXTE :
+Tu assistes les clients UNIQUEMENT sur les sujets lies a {company_name}.
+Tu reponds EXCLUSIVEMENT en utilisant les informations recuperees via le tool search_documents.
+
+REGLES OBLIGATOIRES :
+1. Utilise TOUJOURS le tool search_documents pour recuperer les informations avant de repondre
+2. Reponds UNIQUEMENT avec les donnees retournees par le tool
+3. Cite ta source avec [Source: X]
+4. Si le tool ne retourne rien de pertinent : "Je n'ai pas cette information dans notre documentation."
+5. Si la question est hors sujet : "Desole, je ne peux repondre a cette question."
+
+INTERDICTIONS :
+- Ne JAMAIS repondre sans avoir utilise le tool
+- Ne JAMAIS inventer ou supposer une information
+- Ne JAMAIS repondre a des questions sans rapport avec {company_name}
+
+FORMAT :
+- Ton : {tone}
+- Reponses concises et structurees
+
+EXEMPLE :
+Question : "Quels sont vos delais de livraison ?"
+Reponse : D'apres notre documentation, les delais de livraison sont de 2-5 jours ouvres. [Source: CGV]
+"""
+
     SYSTEM_PROMPT: str = os.getenv("SYSTEM_PROMPT", DEFAULT_SYSTEM_PROMPT)
     SYSTEM_PROMPT_RAG: str = os.getenv("SYSTEM_PROMPT_RAG", os.getenv("SYSTEM_PROMPT", DEFAULT_SYSTEM_PROMPT_RAG))
+    SYSTEM_PROMPT_RAG_TEMPLATE: str = os.getenv("SYSTEM_PROMPT_RAG_TEMPLATE", DEFAULT_SYSTEM_PROMPT_RAG_TEMPLATE)
+
+    @classmethod
+    def format_rag_prompt(cls, company_name: str, tone: str) -> str:
+        """
+        Formate le template RAG avec les infos entreprise.
+
+        Args:
+            company_name: Nom de l'entreprise
+            tone: Ton du chatbot (ex: "professionnel", "amical")
+
+        Returns:
+            Prompt systeme formate
+        """
+        return cls.SYSTEM_PROMPT_RAG_TEMPLATE.format(
+            company_name=company_name,
+            tone=tone
+        )
 
     # === CONFIGURATION RAG ===
     DOCUMENTS_PATH: str = os.getenv("DOCUMENTS_PATH", "./documents")

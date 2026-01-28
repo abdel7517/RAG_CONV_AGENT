@@ -1,212 +1,420 @@
-# RAG Tool Flow - search_documents
+# RAG Tool Flow - Workflow Complet
 
 ## Vue d'ensemble
 
-Le tool `search_documents` permet à l'agent LangChain de rechercher des informations dans la base de documents vectorielle (pgvector). C'est le mécanisme central du RAG (Retrieval Augmented Generation).
+Ce document explique le flux complet du systeme RAG multi-tenant, de la requete utilisateur jusqu'a la reponse finale.
 
-## Architecture
+---
+
+## 1. Flux Global (Sans Code)
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           FLUX D'APPEL DU TOOL                          │
-└─────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         FLUX COMPLET RAG MULTI-TENANT                        │
+└─────────────────────────────────────────────────────────────────────────────┘
 
-  User: "Quels sont les produits disponibles ?"
-                    │
-                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│  1. SimpleAgent.chat()                                                  │
-│     - Reçoit le message utilisateur                                     │
-│     - Appelle agent.astream() avec le message                          │
-└─────────────────────────────────────────────────────────────────────────┘
-                    │
-                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│  2. LangGraph Agent (créé par create_agent)                            │
-│     - Analyse le message avec le LLM (Mistral/Ollama)                  │
-│     - Le LLM DÉCIDE s'il doit utiliser un tool                         │
-│     - Si la question nécessite des infos des documents → appelle tool  │
-└─────────────────────────────────────────────────────────────────────────┘
-                    │
-                    │  Le LLM génère un "tool call" avec:
-                    │  - name: "search_documents"
-                    │  - args: {"query": "produits disponibles"}
-                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│  3. search_documents(query)          [src/tools/rag_tools.py:34]       │
-│     - Fonction décorée avec @tool                                       │
-│     - Récupère le Retriever global                                      │
-│     - Appelle retriever.retrieve_formatted(query)                       │
-└─────────────────────────────────────────────────────────────────────────┘
-                    │
-                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│  4. Retriever.retrieve_formatted()   [src/retrieval/retriever.py:81]   │
-│     - Appelle retrieve() puis format_documents()                        │
-└─────────────────────────────────────────────────────────────────────────┘
-                    │
-                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│  5. Retriever.retrieve()             [src/retrieval/retriever.py:25]   │
-│     - Appelle vector_store.similarity_search(query, k)                  │
-│     - k = nombre de documents à retourner (défaut: 4)                   │
-└─────────────────────────────────────────────────────────────────────────┘
-                    │
-                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│  6. VectorStore.similarity_search()  [src/retrieval/vector_store.py]   │
-│     - Convertit la query en embedding (vecteur)                         │
-│     - Recherche les k vecteurs les plus proches dans pgvector           │
-│     - Retourne les Documents correspondants                             │
-└─────────────────────────────────────────────────────────────────────────┘
-                    │
-                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│  7. Retriever.format_documents()     [src/retrieval/retriever.py:54]   │
-│     - Formate les documents en texte lisible                            │
-│     - Inclut: source, page, contenu                                     │
-│     - Retourne une string formatée                                      │
-└─────────────────────────────────────────────────────────────────────────┘
-                    │
-                    │  Résultat retourné au LLM:
-                    │  "[Document 1]
-                    │   Source: produits.pdf (page 3)
-                    │   Contenu: Nos produits incluent..."
-                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│  8. LangGraph Agent                                                     │
-│     - Reçoit le résultat du tool                                        │
-│     - Le LLM utilise ce contexte pour générer sa réponse                │
-│     - Génère la réponse finale en streaming                             │
-└─────────────────────────────────────────────────────────────────────────┘
-                    │
-                    ▼
-  Assistant: "D'après notre documentation, les produits disponibles sont..."
+    UTILISATEUR                                              BASE DE DONNEES
+         │                                                         │
+         │  "Quels sont vos delais de livraison ?"                │
+         │  + company_id: "techstore"                              │
+         │  + email: "client@example.com"                          │
+         ▼                                                         │
+┌─────────────────┐                                                │
+│    FRONTEND     │                                                │
+│   (React App)   │                                                │
+└────────┬────────┘                                                │
+         │                                                         │
+         │  POST /api/chat                                         │
+         │  { company_id, email, message }                         │
+         ▼                                                         │
+┌─────────────────┐                                                │
+│    BACKEND      │                                                │
+│   (FastAPI)     │                                                │
+└────────┬────────┘                                                │
+         │                                                         │
+         │  PUBLISH vers Redis                                     │
+         │  Canal: inbox:{email}                                   │
+         ▼                                                         │
+┌─────────────────┐                                                │
+│     REDIS       │                                                │
+│    Pub/Sub      │                                                │
+└────────┬────────┘                                                │
+         │                                                         │
+         │  SUBSCRIBE inbox:*                                      │
+         ▼                                                         │
+┌─────────────────┐      Recupere config entreprise      ┌─────────────────┐
+│     AGENT       │ ────────────────────────────────────▶│   POSTGRESQL    │
+│   (LangChain)   │◀──────────────────────────────────── │   (companies)   │
+└────────┬────────┘   { name: "TechStore", tone: "amical" }        │
+         │                                                         │
+         │  Cree/utilise un agent avec                             │
+         │  le prompt personnalise                                 │
+         ▼                                                         │
+┌─────────────────┐                                                │
+│      LLM        │                                                │
+│ (Mistral/Ollama)│                                                │
+└────────┬────────┘                                                │
+         │                                                         │
+         │  Le LLM analyse la question                             │
+         │  et decide d'appeler le tool                            │
+         ▼                                                         │
+┌─────────────────┐      Recherche vectorielle           ┌─────────────────┐
+│ search_documents│ ────────────────────────────────────▶│   POSTGRESQL    │
+│     (Tool)      │◀──────────────────────────────────── │   (pgvector)    │
+└────────┬────────┘   Documents filtres par company_id   └─────────────────┘
+         │
+         │  Contexte: "[Document 1] Delais: 2-5 jours..."
+         ▼
+┌─────────────────┐
+│      LLM        │
+│  (Generation)   │
+└────────┬────────┘
+         │
+         │  Genere la reponse finale
+         │  en utilisant le contexte
+         ▼
+┌─────────────────┐
+│     AGENT       │
+│   (Streaming)   │
+└────────┬────────┘
+         │
+         │  PUBLISH vers Redis
+         │  Canal: outbox:{email}
+         │  { chunk: "D'apres...", done: false }
+         ▼
+┌─────────────────┐
+│     REDIS       │
+└────────┬────────┘
+         │
+         │  SSE Stream
+         ▼
+┌─────────────────┐
+│    FRONTEND     │
+│  (Affichage)    │
+└────────┬────────┘
+         │
+         ▼
+    UTILISATEUR
+
+    "D'apres notre documentation, les delais de livraison
+     sont de 2-5 jours ouvres. [Source: CGV]"
 ```
 
-## Quand le tool est-il appelé ?
+---
 
-Le LLM décide **automatiquement** d'appeler le tool basé sur:
+## 2. Etapes Detaillees
 
-1. **Le system prompt** (`SYSTEM_PROMPT_RAG` dans settings.py) qui lui indique qu'il a accès à un outil de recherche
-2. **La nature de la question** - si elle nécessite des informations factuelles sur les documents
-3. **Le contexte de la conversation**
+### Etape 1 : Requete Utilisateur
 
-### Exemples où le tool EST appelé:
-- "Quels sont vos produits ?"
+L'utilisateur envoie un message via l'interface de chat. La requete contient :
+- **company_id** : Identifiant de l'entreprise (ex: "techstore")
+- **email** : Identifiant de session (ex: "client@example.com")
+- **message** : La question posee
+
+### Etape 2 : Routage Backend
+
+Le backend FastAPI recoit la requete et la publie sur Redis dans un canal specifique a l'utilisateur (`inbox:{email}`). Cela permet un traitement asynchrone.
+
+### Etape 3 : Reception par l'Agent
+
+L'agent ecoute tous les canaux `inbox:*` et recoit le message. Il extrait le `company_id` pour configurer le contexte.
+
+### Etape 4 : Configuration Multi-tenant
+
+L'agent interroge PostgreSQL pour recuperer les informations de l'entreprise :
+- **Nom** : "TechStore"
+- **Ton** : "amical et decontracte"
+
+Ces informations servent a personnaliser le prompt systeme.
+
+### Etape 5 : Analyse par le LLM
+
+Le LLM recoit la question avec un prompt personnalise :
+> "Tu es un chatbot de **TechStore**... Ton: **amical**..."
+
+Le LLM analyse la question et decide s'il doit rechercher des informations.
+
+### Etape 6 : Appel du Tool (Decision du LLM)
+
+Si la question necessite des informations factuelles, le LLM appelle automatiquement le tool `search_documents` avec une requete de recherche.
+
+**Exemples de questions declenchant le tool :**
+- "Quels sont vos delais de livraison ?"
 - "Quelle est votre politique de retour ?"
-- "Combien coûte le produit X ?"
+- "Combien coute le produit X ?"
 
-### Exemples où le tool N'EST PAS appelé:
-- "Bonjour, comment ça va ?"
+**Exemples de questions NE declenchant PAS le tool :**
+- "Bonjour !"
 - "Merci pour l'info"
 - "Peux-tu reformuler ?"
 
-## Fichiers impliqués
+### Etape 7 : Recherche Vectorielle
 
-| Fichier | Rôle |
-|---------|------|
-| `src/tools/rag_tools.py` | Définition du tool `search_documents` |
-| `src/retrieval/retriever.py` | Logique de recherche et formatage |
-| `src/retrieval/vector_store.py` | Interface avec pgvector |
-| `src/agents/simple_agent.py` | Création de l'agent avec le tool |
-| `src/config/settings.py` | `SYSTEM_PROMPT_RAG` qui guide le LLM |
+Le tool effectue une recherche semantique dans pgvector :
+1. La question est convertie en vecteur (embedding)
+2. Les documents les plus similaires sont recuperes
+3. **Filtre multi-tenant** : Seuls les documents avec `company_id = "techstore"` sont retournes
 
-## Configuration dans SimpleAgent
+### Etape 8 : Formatage du Contexte
 
-```python
-# src/agents/simple_agent.py
-
-def _setup_rag(self):
-    """Configure les composants RAG si activé."""
-    if not self.enable_rag:
-        return
-
-    # 1. Crée le VectorStore (connexion à pgvector)
-    self.vector_store = VectorStore()
-
-    # 2. Crée le Retriever (wrapper pour la recherche)
-    self.retriever = Retriever(self.vector_store)
-
-    # 3. Crée le tool et l'associe au retriever
-    self.search_tool = create_search_documents_tool(self.retriever)
-
-def _create_agent(self):
-    """Crée l'agent LangGraph."""
-    # Le tool est passé à l'agent seulement si RAG est activé
-    tools = [self.search_tool] if self.enable_rag and self.search_tool else []
-
-    # Le prompt RAG indique au LLM comment utiliser le tool
-    system_prompt = settings.SYSTEM_PROMPT_RAG if self.enable_rag else settings.SYSTEM_PROMPT
-
-    self.agent = create_agent(
-        model=self.llm,
-        tools=tools,  # <-- Le tool est enregistré ici
-        system_prompt=system_prompt,
-        checkpointer=self.memory
-    )
-```
-
-## Le décorateur @tool
-
-```python
-# src/tools/rag_tools.py
-
-@tool  # <-- Ce décorateur transforme la fonction en "Tool" LangChain
-def search_documents(query: str) -> str:
-    """
-    Permet de retrouver des informations en lien avec le commerçant comme 
-    les CGU, CGV .. (délais de livraison, de retour..)
-    Recherche des informations pertinentes dans la base de documents.
-
-    Args:
-        query: La question ou les mots-clés à rechercher
-
-    Returns:
-        Les extraits de documents pertinents formatés
-    """
-    retriever = get_retriever()
-    result = retriever.retrieve_formatted(query)
-    return result
-```
-
-## Format de la réponse du tool
-
-Le tool retourne une string formatée comme ceci:
-
+Les documents trouves sont formates en texte lisible :
 ```
 [Document 1]
-Source: TechStore_Documentation.pdf (page 3)
-Contenu:
-Nos produits phares incluent:
-- Smartphone TechX Pro: 899€
-- Laptop UltraBook 15: 1299€
-- Tablette TabMax: 599€
+Source: CGV.pdf (page 2)
+Contenu: Delais de livraison : 2-5 jours ouvres pour la France...
 
 ---
 
 [Document 2]
-Source: TechStore_Documentation.pdf (page 5)
-Contenu:
-Politique de garantie:
-Tous nos produits sont garantis 2 ans...
+Source: FAQ.pdf (page 1)
+Contenu: Livraison express disponible en 24h moyennant 9.99EUR...
 ```
 
-Ce texte est ensuite injecté dans le contexte du LLM qui l'utilise pour formuler sa réponse finale.
+### Etape 9 : Generation de la Reponse
 
-## Debug / Logs
+Le LLM recoit le contexte et genere une reponse naturelle en citant les sources :
+> "D'apres notre documentation, les delais de livraison sont de 2-5 jours ouvres pour la France metropolitaine. Une option express en 24h est disponible pour 9.99EUR. [Source: CGV, FAQ]"
 
-Pour voir quand le tool est appelé, active les logs DEBUG:
+### Etape 10 : Streaming vers l'Utilisateur
 
-```python
-# Dans main.py, le logging est déjà configuré en DEBUG
-logging.basicConfig(level=logging.DEBUG, ...)
+La reponse est streamee token par token via Redis et SSE, permettant un affichage progressif dans l'interface.
+
+---
+
+## 3. Isolation Multi-tenant
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    ISOLATION DES DONNEES                        │
+└─────────────────────────────────────────────────────────────────┘
+
+  Entreprise A (techstore)          Entreprise B (acme)
+         │                                 │
+         ▼                                 ▼
+┌─────────────────┐              ┌─────────────────┐
+│  Documents A    │              │  Documents B    │
+│  - CGV_A.pdf    │              │  - CGV_B.pdf    │
+│  - FAQ_A.pdf    │              │  - FAQ_B.pdf    │
+│  - Produits_A   │              │  - Produits_B   │
+└────────┬────────┘              └────────┬────────┘
+         │                                 │
+         │ company_id = "techstore"        │ company_id = "acme"
+         ▼                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                         PGVECTOR                                │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ id │ content          │ embedding │ company_id         │   │
+│  ├────┼──────────────────┼───────────┼────────────────────┤   │
+│  │ 1  │ "Delais: 2-5j"   │ [0.1,...] │ techstore          │   │
+│  │ 2  │ "Delais: 3-7j"   │ [0.2,...] │ acme               │   │
+│  │ 3  │ "Retour: 30j"    │ [0.3,...] │ techstore          │   │
+│  └─────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+
+Requete company_id="techstore" → Ne voit QUE les documents 1 et 3
+Requete company_id="acme"      → Ne voit QUE le document 2
 ```
 
-Tu verras dans les logs:
+**Garantie** : Une entreprise ne peut JAMAIS acceder aux documents d'une autre entreprise.
+
+---
+
+## 4. Personnalisation du Prompt
+
 ```
-INFO - Tool search_documents appelé avec: 'produits disponibles...'
-INFO - Recherche de documents pour: 'produits disponibles...'
-INFO -   -> 4 documents trouves
-DEBUG - Résultat de la recherche: 1523 caractères
+┌─────────────────────────────────────────────────────────────────┐
+│                  PROMPT PERSONNALISE PAR ENTREPRISE             │
+└─────────────────────────────────────────────────────────────────┘
+
+                    Table "companies"
+┌──────────────┬─────────────┬──────────────────────────┐
+│ company_id   │ name        │ tone                     │
+├──────────────┼─────────────┼──────────────────────────┤
+│ techstore    │ TechStore   │ amical et decontracte    │
+│ acme         │ Acme Corp   │ professionnel et formel  │
+│ boutique     │ La Boutique │ chaleureux et proche     │
+└──────────────┴─────────────┴──────────────────────────┘
+                              │
+                              ▼
+                    Template de Prompt
+         "Tu es un chatbot de {name}...
+          Ton: {tone}..."
+                              │
+         ┌────────────────────┼────────────────────┐
+         ▼                    ▼                    ▼
+┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+│ Agent TechStore │  │  Agent Acme     │  │ Agent Boutique  │
+│                 │  │                 │  │                 │
+│ Prompt:         │  │ Prompt:         │  │ Prompt:         │
+│ "Tu es un       │  │ "Tu es un       │  │ "Tu es un       │
+│  chatbot de     │  │  chatbot de     │  │  chatbot de     │
+│  TechStore...   │  │  Acme Corp...   │  │  La Boutique... │
+│  Ton: amical"   │  │  Ton: formel"   │  │  Ton: chaleureux│
+└─────────────────┘  └─────────────────┘  └─────────────────┘
+```
+
+---
+
+## 5. Decision du LLM : Appeler ou Non le Tool
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              QUAND LE LLM APPELLE LE TOOL ?                     │
+└─────────────────────────────────────────────────────────────────┘
+
+Le LLM decide AUTOMATIQUEMENT d'appeler le tool base sur :
+
+1. LE PROMPT SYSTEME
+   → Lui indique qu'il a acces a un outil de recherche
+   → Lui dit de TOUJOURS l'utiliser pour les questions factuelles
+
+2. LA NATURE DE LA QUESTION
+   → Questions sur les produits, prix, politiques → APPEL
+   → Salutations, remerciements, reformulations → PAS D'APPEL
+
+3. LE CONTEXTE DE LA CONVERSATION
+   → Si l'info est deja dans l'historique → peut-etre pas d'appel
+   → Nouvelle question factuelle → APPEL
+
+
+     Question de l'utilisateur
+              │
+              ▼
+    ┌─────────────────┐
+    │ Le LLM analyse  │
+    │ la question     │
+    └────────┬────────┘
+              │
+              ▼
+    ┌─────────────────────────────────┐
+    │ Necessite des infos factuelles? │
+    └────────────────┬────────────────┘
+              │
+       ┌──────┴──────┐
+       │             │
+      OUI           NON
+       │             │
+       ▼             ▼
+┌─────────────┐ ┌─────────────┐
+│ APPEL TOOL  │ │ REPONSE     │
+│ search_     │ │ DIRECTE     │
+│ documents   │ │ (pas de     │
+│             │ │  recherche) │
+└─────────────┘ └─────────────┘
+```
+
+---
+
+## 6. Resume du Workflow
+
+| Etape | Composant | Action |
+|-------|-----------|--------|
+| 1 | Frontend | Envoie la requete avec company_id |
+| 2 | Backend | Publie sur Redis inbox:{email} |
+| 3 | Agent | Recoit le message, extrait company_id |
+| 4 | Agent | Recupere config entreprise (PostgreSQL) |
+| 5 | Agent | Cree/selectionne l'agent avec le bon prompt |
+| 6 | LLM | Analyse la question |
+| 7 | LLM | Decide d'appeler search_documents |
+| 8 | Tool | Recherche vectorielle filtree par company_id |
+| 9 | Tool | Formate les documents en contexte |
+| 10 | LLM | Genere la reponse avec le contexte |
+| 11 | Agent | Streame la reponse via Redis outbox:{email} |
+| 12 | Frontend | Affiche la reponse en temps reel |
+
+---
+
+## 7. Fichiers Cles
+
+| Fichier | Role |
+|---------|------|
+| `src/agents/simple_agent.py` | Orchestration de l'agent et gestion multi-tenant |
+| `src/tools/rag_tools.py` | Definition du tool search_documents + RAGAgentState |
+| `src/retrieval/retriever.py` | Logique de recherche avec filtre company_id |
+| `src/retrieval/vector_store.py` | Interface avec pgvector |
+| `src/repositories/company_repository.py` | Acces aux donnees entreprise |
+| `src/config/settings.py` | Template de prompt personnalise |
+| `backend/routes/chat.py` | Endpoint API avec company_id |
+
+---
+
+## 8. Architecture Technique (InjectedState)
+
+### Passage du company_id au Tool
+
+Le `company_id` est passe au tool `search_documents` via le mecanisme `InjectedState` de LangChain.
+Cela evite les variables globales et garantit la thread-safety.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              INJECTION DU COMPANY_ID DANS LE TOOL               │
+└─────────────────────────────────────────────────────────────────┘
+
+  1. Message recu avec company_id
+         │
+         ▼
+  2. chat() prepare l'etat:
+     input_state = {
+         "messages": [...],
+         "company_id": "techstore"  <-- Ajoute a l'etat
+     }
+         │
+         ▼
+  3. agent.astream(input_state)
+         │
+         ▼
+  4. LLM appelle search_documents(query)
+         │
+         ▼
+  5. LangChain injecte automatiquement l'etat:
+     search_documents(query, state)
+         │
+         ▼
+  6. Le tool accede au company_id:
+     company_id = state["company_id"]  → "techstore"
+```
+
+### Schema d'etat personnalise
+
+L'agent utilise un schema d'etat personnalise qui etend `AgentState` :
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      RAGAgentState                              │
+├─────────────────────────────────────────────────────────────────┤
+│  messages: list      (herite de AgentState)                     │
+│  company_id: str     (ajoute pour le multi-tenant)              │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+Ce schema est utilise de deux manieres :
+
+1. **Dans `create_agent()`** : Definit la structure de l'etat
+2. **Dans le tool** : Permet l'injection via `InjectedState`
+
+### Avantages de cette architecture
+
+| Aspect | Benefice |
+|--------|----------|
+| Thread-safe | Chaque requete a son propre etat, pas de partage |
+| Testable | Etat explicite, facile a mocker dans les tests |
+| Pas de variables globales | Evite les race conditions en environnement concurrent |
+| Standard LangChain | Utilise les patterns recommandes par la documentation |
+| Persistance | L'etat (dont company_id) est sauvegarde avec le checkpointer |
+
+### Comparaison avec l'ancienne approche
+
+```
+AVANT (variables globales)              APRES (InjectedState)
+─────────────────────────               ─────────────────────────
+set_current_company_id()                input_state["company_id"]
+       │                                        │
+       ▼                                        ▼
+Variable globale partagee               Etat par requete
+       │                                        │
+       ▼                                        ▼
+get_current_company_id()                state["company_id"]
+       │                                        │
+       ▼                                        ▼
+   RISQUE: Race conditions              SECURISE: Thread-safe
 ```

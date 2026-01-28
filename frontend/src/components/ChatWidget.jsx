@@ -62,7 +62,13 @@ function TypingIndicator() {
   )
 }
 
-export function ChatWidget({ defaultEmail = '', companyId = 'default' }) {
+export function ChatWidget({ defaultEmail = '', companyId }) {
+  // Validation: companyId est obligatoire
+  if (!companyId) {
+    console.error('[ChatWidget] Erreur: companyId est requis', { companyId })
+    return null
+  }
+
   const [isOpen, setIsOpen] = useState(false)
   const [email, setEmail] = useState(defaultEmail)
   const [isConnected, setIsConnected] = useState(!!defaultEmail)

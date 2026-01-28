@@ -215,6 +215,64 @@ def run_setup_db():
         sys.exit(1)
 
 
+def run_add_company(company_id: str, name: str, tone: str):
+    """Ajoute ou met a jour une entreprise dans la base de donnees."""
+    try:
+        from src.repositories.company_repository import CompanyRepository
+        from src.models.company import Company
+
+        async def add():
+            repo = CompanyRepository()
+            company = Company(company_id=company_id, name=name, tone=tone)
+            await repo.create(company)
+
+        asyncio.run(add())
+        print_success(f"Entreprise '{name}' ({company_id}) ajoutee/mise a jour")
+        print(f"  Ton: {tone}")
+
+    except KeyboardInterrupt:
+        print("\nArret demande par l'utilisateur.")
+        sys.exit(1)
+    except ImportError as e:
+        print_error(f"Erreur d'import: {e}\nVerifiez que toutes les dependances sont installees: pip install -r requirements.txt")
+        sys.exit(1)
+    except Exception as e:
+        print_error(f"Erreur lors de l'ajout de l'entreprise: {e}")
+        sys.exit(1)
+
+
+def run_list_companies():
+    """Liste toutes les entreprises configurees."""
+    try:
+        from src.repositories.company_repository import CompanyRepository
+
+        async def list_all():
+            repo = CompanyRepository()
+            return await repo.list_all()
+
+        companies = asyncio.run(list_all())
+
+        if not companies:
+            print("Aucune entreprise configuree.")
+            print("\nAjoutez une entreprise avec:")
+            print("  python main.py add-company --company-id <ID> --name <NOM> --tone <TON>")
+            return
+
+        print(f"\n{'='*60}")
+        print(f"{'ENTREPRISES CONFIGUREES':^60}")
+        print(f"{'='*60}")
+        print(f"{'ID':<20} {'Nom':<25} {'Ton':<15}")
+        print(f"{'-'*60}")
+        for c in companies:
+            print(f"{c.company_id:<20} {c.name:<25} {c.tone:<15}")
+        print(f"{'='*60}")
+        print(f"Total: {len(companies)} entreprise(s)")
+
+    except Exception as e:
+        print_error(f"Erreur lors de la lecture: {e}")
+        sys.exit(1)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="RAG Conversational Agent - CLI",
@@ -225,15 +283,18 @@ Exemples:
   python main.py rag --thread-id user123   # Lancer l'agent RAG avec un thread specifique
   python main.py serve                     # Lancer l'agent simple en mode serveur (Redis)
   python main.py serve-rag                 # Lancer l'agent RAG en mode serveur
-  python main.py index-documents --company-id techstore_123  # Indexer les PDFs
-  python main.py index-documents --company-id acme_456 --documents-path ./docs/acme
   python main.py setup-db                  # Initialiser PostgreSQL
+
+  # Multi-tenant (entreprises)
+  python main.py add-company --company-id techstore --name "TechStore" --tone "amical"
+  python main.py list-companies            # Lister les entreprises configurees
+  python main.py index-documents --company-id techstore  # Indexer les PDFs
         """
     )
 
     parser.add_argument(
         "command",
-        choices=["simple", "rag", "serve", "serve-rag", "index-documents", "setup-db"],
+        choices=["simple", "rag", "serve", "serve-rag", "index-documents", "setup-db", "add-company", "list-companies"],
         help="Commande a executer"
     )
     parser.add_argument(
@@ -261,6 +322,16 @@ Exemples:
         "--documents-path",
         default=None,
         help="Chemin vers les documents a indexer (pour index-documents)"
+    )
+    parser.add_argument(
+        "--name",
+        default=None,
+        help="Nom de l'entreprise (pour add-company)"
+    )
+    parser.add_argument(
+        "--tone",
+        default="professionnel et courtois",
+        help="Ton du chatbot (pour add-company, defaut: professionnel et courtois)"
     )
 
     # Gerer le cas ou aucun argument n'est fourni
@@ -299,6 +370,20 @@ Exemples:
 
     elif args.command == "setup-db":
         run_setup_db()
+
+    elif args.command == "add-company":
+        if not args.company_id:
+            print_error("--company-id est requis")
+            print("Usage: python main.py add-company --company-id <ID> --name <NOM> [--tone <TON>]")
+            sys.exit(1)
+        if not args.name:
+            print_error("--name est requis")
+            print("Usage: python main.py add-company --company-id <ID> --name <NOM> [--tone <TON>]")
+            sys.exit(1)
+        run_add_company(args.company_id, args.name, args.tone)
+
+    elif args.command == "list-companies":
+        run_list_companies()
 
 
 if __name__ == "__main__":

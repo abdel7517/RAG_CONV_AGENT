@@ -23,14 +23,32 @@ Voir docs/RAG_TOOL_FLOW.md pour plus de détails.
 """
 
 import logging
-from typing import Optional
+from typing import Annotated, Optional
 
 from langchain_core.tools import tool
+from langchain.agents import AgentState
+from langgraph.prebuilt import InjectedState
 
 from src.retrieval.retriever import Retriever
 from src.retrieval.vector_store import VectorStore
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# ÉTAT PERSONNALISÉ POUR LE MULTI-TENANT
+# ============================================================================
+# RAGAgentState étend AgentState avec company_id pour le filtrage des documents.
+# Cet état est passé aux tools via InjectedState (injecté automatiquement).
+# ============================================================================
+
+class RAGAgentState(AgentState):
+    """
+    État personnalisé avec company_id pour le filtrage multi-tenant.
+
+    Utilisé avec state_schema dans create_agent() et InjectedState dans les tools.
+    """
+    company_id: Optional[str]
 
 # ============================================================================
 # GESTION DU RETRIEVER GLOBAL
@@ -63,31 +81,6 @@ def set_retriever(retriever: Retriever) -> None:
     _retriever = retriever
 
 
-# ============================================================================
-# GESTION DU COMPANY_ID (MULTI-TENANT)
-# ============================================================================
-# Le company_id est défini par l'agent avant chaque appel au tool.
-# Cela permet de filtrer les documents par entreprise.
-# ============================================================================
-
-_current_company_id: Optional[str] = None
-
-
-def get_current_company_id() -> Optional[str]:
-    """Retourne le company_id du contexte courant."""
-    return _current_company_id
-
-
-def set_current_company_id(company_id: str) -> None:
-    """
-    Définit le company_id pour le contexte courant.
-
-    Appelé par SimpleAgent._handle_message() avant de traiter
-    chaque message utilisateur.
-    """
-    global _current_company_id
-    _current_company_id = company_id
-    logger.debug(f"company_id défini: {company_id}")
 
 
 # ============================================================================
@@ -97,10 +90,16 @@ def set_current_company_id(company_id: str) -> None:
 #
 # IMPORTANT: La docstring est CRITIQUE car elle est utilisée par le LLM
 # pour comprendre QUAND et COMMENT utiliser le tool.
+#
+# Le paramètre `state` avec InjectedState est automatiquement injecté par
+# LangChain et n'apparaît PAS dans la signature vue par le LLM.
 # ============================================================================
 
 @tool
-def search_documents(query: str) -> str:
+def search_documents(
+    query: str,
+    state: Annotated[RAGAgentState, InjectedState]
+) -> str:
     """
     Recherche des informations pertinentes dans la base de documents.
 
@@ -114,8 +113,8 @@ def search_documents(query: str) -> str:
     Returns:
         Les extraits de documents pertinents formatés
     """
-    # Récupère le company_id du contexte courant (défini par l'agent)
-    company_id = get_current_company_id()
+    # Récupère le company_id depuis l'état injecté (plus de variable globale)
+    company_id = state.get("company_id")
 
     logger.info(f"Tool search_documents: query='{query[:100]}...', company_id={company_id}")
 

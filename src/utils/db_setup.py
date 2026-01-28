@@ -9,9 +9,33 @@ Ce module fournit des fonctions pour:
 Base sur: https://docs.langchain.com/oss/python/langgraph/persistence
 """
 
+import psycopg
+
 from langgraph.checkpoint.postgres import PostgresSaver
 
 from src.config import settings
+
+
+def _create_companies_table() -> None:
+    """
+    Cree la table companies pour stocker la configuration des entreprises.
+
+    Cette table permet le multi-tenant: chaque entreprise a son propre
+    prompt personnalise (nom, ton).
+    """
+    create_table_sql = """
+    CREATE TABLE IF NOT EXISTS companies (
+        company_id VARCHAR(255) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        tone VARCHAR(255) DEFAULT 'professionnel et courtois',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """
+
+    with psycopg.connect(settings.get_postgres_uri()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(create_table_sql)
+        conn.commit()
 
 
 def test_connection() -> bool:
@@ -50,10 +74,16 @@ def setup_postgres() -> bool:
             checkpointer.setup()
             print("Tables creees avec succes!")
 
+            # Creer la table companies pour le multi-tenant
+            print("\nCreation de la table companies (multi-tenant)...")
+            _create_companies_table()
+            print("Table companies creee avec succes!")
+
             print("\nTables PostgreSQL creees:")
             print("  - checkpoints: Etats complets du graphe a chaque etape")
             print("  - checkpoint_writes: Ecritures intermediaires (pending writes)")
             print("  - checkpoint_blobs: Stockage de donnees volumineuses")
+            print("  - companies: Configuration des entreprises (multi-tenant)")
 
         print("\n" + "=" * 70)
         print("POSTGRESQL EST PRET!")
