@@ -1,7 +1,7 @@
 """
 Agent conversationnel simple avec LangChain
 Base sur la documentation: https://docs.langchain.com/oss/python/langchain/agents
-Supporte Ollama (local) et Mistral (API)
+Supporte Ollama (local), Mistral (API) et OpenAI (API) via injection de dépendances.
 """
 
 import asyncio
@@ -17,6 +17,7 @@ from dependency_injector.wiring import inject, Provide
 from src.config import settings
 from src.infrastructure.container import Container
 from src.application.services.rag_service import RAGService
+from src.domain.ports.llm_port import LLMPort
 
 if TYPE_CHECKING:
     from src.messaging import MessageChannel, Message
@@ -49,25 +50,27 @@ class SimpleAgent:
     Agent conversationnel simple avec memoire PostgreSQL.
 
     Cet agent utilise LangChain et LangGraph pour gerer:
-    - La generation de texte via Ollama (local) ou Mistral (API)
+    - La generation de texte via Ollama (local), Mistral (API) ou OpenAI (API)
     - La persistance des conversations via PostgreSQL
     - Le streaming des reponses token par token
+
+    Architecture Hexagonale:
+    =======================
+    Le LLM est injecté via le pattern @inject + Provide[].
+    Le provider est sélectionné automatiquement selon settings.LLM_PROVIDER
+    via providers.Selector dans le Container.
     """
 
-    SUPPORTED_PROVIDERS = ["ollama", "mistral", "openai"]
-
-    def __init__(self, llm_provider: str = None, enable_rag: bool = False):
+    def __init__(self, enable_rag: bool = False):
         """
         Initialise l'agent avec la configuration centralisee.
 
         Args:
-            llm_provider: Provider LLM a utiliser ("ollama" ou "mistral").
-                         Si None, utilise la valeur de LLM_PROVIDER dans .env
             enable_rag: Si True, active le RAG avec recherche de documents
         """
-        self.llm_provider = llm_provider or settings.LLM_PROVIDER
         self.enable_rag = enable_rag
         self.llm = None
+        self.llm_adapter = None  # LLMPort injecté
         self.agent = None
         self.checkpointer_ctx = None
         self.memory = None
@@ -80,85 +83,25 @@ class SimpleAgent:
         # Cache d'agents par company_id (pour prompts personnalises)
         self._agents_cache: dict = {}
 
-    def _check_ollama_connection(self) -> bool:
+    @inject
+    def _init_llm(self, llm_adapter: LLMPort = Provide[Container.llm]):
         """
-        Verifie que Ollama est accessible.
+        Initialise le LLM via injection de dépendances.
 
-        Returns:
-            bool: True si Ollama repond, False sinon
+        L'adapter LLM est sélectionné automatiquement par le Container
+        selon la valeur de settings.LLM_PROVIDER (ollama, mistral, openai).
+
+        Args:
+            llm_adapter: Adapter LLM injecté (OllamaAdapter, MistralAdapter ou OpenAIAdapter)
+
+        Raises:
+            ConnectionError: Si le provider n'est pas accessible
+            ValueError: Si la configuration est invalide (ex: API key manquante)
         """
-        try:
-            response = httpx.get(f"{settings.OLLAMA_BASE_URL}/api/tags", timeout=5.0)
-            return response.status_code == 200
-        except (httpx.ConnectError, httpx.TimeoutException):
-            return False
-
-    def _init_llm_ollama(self):
-        """Initialise le LLM avec Ollama."""
-        from langchain_ollama import ChatOllama
-
-        if not self._check_ollama_connection():
-            raise OllamaConnectionError(
-                f"Impossible de se connecter a Ollama sur {settings.OLLAMA_BASE_URL}\n"
-                "Assurez-vous qu'Ollama est demarre avec: ollama serve"
-            )
-
-        self.llm = ChatOllama(
-            model=settings.OLLAMA_MODEL,
-            base_url=settings.OLLAMA_BASE_URL,
-            temperature=settings.MODEL_TEMPERATURE,
-            streaming=True
-        )
-
-    def _init_llm_mistral(self):
-        """Initialise le LLM avec Mistral API."""
-        from langchain_mistralai import ChatMistralAI
-
-        if not settings.MISTRAL_API_KEY:
-            raise LLMProviderError(
-                "MISTRAL_API_KEY n'est pas definie.\n"
-                "Ajoutez votre cle API Mistral dans le fichier .env:\n"
-                "MISTRAL_API_KEY=votre_cle_api"
-            )
-
-        self.llm = ChatMistralAI(
-            model=settings.MISTRAL_MODEL,
-            api_key=settings.MISTRAL_API_KEY,
-            temperature=settings.MODEL_TEMPERATURE,
-            streaming=True
-        )
-
-    def _init_llm_openai(self):
-        """Initialise le LLM avec OpenAI API."""
-        from langchain_openai import ChatOpenAI
-
-        if not settings.OPENAI_API_KEY:
-            raise LLMProviderError(
-                "OPENAI_API_KEY n'est pas definie.\n"
-                "Ajoutez votre cle API OpenAI dans le fichier .env:\n"
-                "OPENAI_API_KEY=votre_cle_api"
-            )
-
-        self.llm = ChatOpenAI(
-            model=settings.OPENAI_MODEL,
-            api_key=settings.OPENAI_API_KEY,
-            temperature=settings.MODEL_TEMPERATURE,
-            streaming=True
-        )
-
-    def _init_llm(self):
-        """Initialise le modele de langage selon le provider configure."""
-        if self.llm_provider == "ollama":
-            self._init_llm_ollama()
-        elif self.llm_provider == "mistral":
-            self._init_llm_mistral()
-        elif self.llm_provider == "openai":
-            self._init_llm_openai()
-        else:
-            raise LLMProviderError(
-                f"Provider LLM inconnu: '{self.llm_provider}'\n"
-                f"Providers supportes: {', '.join(self.SUPPORTED_PROVIDERS)}"
-            )
+        self.llm_adapter = llm_adapter
+        logger.info(f"Initialisation LLM via {llm_adapter.provider_name} adapter...")
+        self.llm = llm_adapter.get_llm()
+        logger.info(f"LLM initialisé avec {llm_adapter.provider_name}")
 
     async def _setup_memory(self):
         """Configure la memoire PostgreSQL."""
@@ -374,7 +317,8 @@ class SimpleAgent:
 
         config = {"configurable": {"thread_id": thread_id}}
         logger.debug(f"Configuration agent: {config}")
-        logger.debug(f"Demarrage du streaming avec le LLM provider: {self.llm_provider}")
+        provider_name = self.llm_adapter.provider_name if self.llm_adapter else "unknown"
+        logger.debug(f"Demarrage du streaming avec le LLM provider: {provider_name}")
 
         # Preparer l'etat avec company_id pour InjectedState
         input_state = {"messages": [HumanMessage(content=user_input)]}
@@ -396,7 +340,8 @@ class SimpleAgent:
             logger.debug("Streaming termine avec succes")
         except httpx.ConnectError as e:
             logger.debug(f"ConnectError: {e}", exc_info=True)
-            if self.llm_provider == "ollama":
+            provider_name = self.llm_adapter.provider_name if self.llm_adapter else "unknown"
+            if provider_name == "ollama":
                 raise OllamaConnectionError(
                     "Connexion a Ollama perdue. Verifiez qu'Ollama est toujours en cours d'execution."
                 )

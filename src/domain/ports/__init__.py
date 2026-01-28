@@ -7,5 +7,6 @@ Ils permettent l'inversion de dépendance (DIP - SOLID).
 
 from src.domain.ports.vector_store_port import VectorStorePort
 from src.domain.ports.retriever_port import RetrieverPort
+from src.domain.ports.llm_port import LLMPort
 
-__all__ = ["VectorStorePort", "RetrieverPort"]
+__all__ = ["VectorStorePort", "RetrieverPort", "LLMPort"]

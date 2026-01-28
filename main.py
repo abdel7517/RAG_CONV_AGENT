@@ -30,7 +30,10 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 # Container DI global + wire pour @inject
 from src.infrastructure.container import Container
+from src.config import settings
+
 container = Container()
+container.config.llm_provider.from_value(settings.LLM_PROVIDER)
 container.wire(modules=["src.agents.simple_agent"])
 
 
