@@ -25,7 +25,7 @@ import logging
 from typing import Optional, TYPE_CHECKING
 
 from langchain.tools import tool, ToolRuntime
-from langchain.agents import AgentState
+from langgraph.prebuilt.chat_agent_executor import AgentState  # Contient messages ET remaining_steps
 
 if TYPE_CHECKING:
     from src.application.services.rag_service import RAGService
@@ -39,12 +39,14 @@ logger = logging.getLogger(__name__)
 
 class RAGAgentState(AgentState):
     """
-    État personnalisé avec company_id pour le filtrage multi-tenant.
+    État personnalisé avec company_id et rag_context.
 
-    Utilisé avec state_schema dans create_agent() pour que le tool
-    puisse accéder au company_id via ToolRuntime.
+    Utilisé avec state_schema dans create_agent() pour:
+    - company_id: Filtrage multi-tenant
+    - rag_context: Contexte documentaire récupéré de la DB (RAG Direct)
     """
     company_id: Optional[str]
+    rag_context: Optional[str]  # Contexte RAG injecté avant l'appel LLM
 
 
 # ============================================================================

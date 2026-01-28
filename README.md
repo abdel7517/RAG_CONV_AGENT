@@ -151,7 +151,7 @@ python main.py index-documents --company-id acme_456 --documents-path ./docs/acm
 uvicorn backend.main:app --reload --port 8000
 
 # Terminal 2: Agent en mode serveur
-python main.py serve
+python main.py serve-rag
 
 # Terminal 3: Frontend React
 cd frontend && npm install && npm run dev

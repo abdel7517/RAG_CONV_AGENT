@@ -9,7 +9,7 @@ import logging
 from typing import TYPE_CHECKING
 
 import httpx
-from langchain.agents import create_agent
+from langgraph.prebuilt import create_react_agent
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from dependency_injector.wiring import inject, Provide
@@ -187,14 +187,14 @@ class SimpleAgent:
         try:
             tools = [self.search_tool] if self.search_tool else []
 
-            # Formater le prompt avec les infos entreprise
+            # Prompt statique personnalise pour l'entreprise
             system_prompt = settings.format_rag_prompt(company_name, tone)
 
-            agent = create_agent(
+            agent = create_react_agent(
                 model=self.llm,
                 tools=tools,
-                system_prompt=system_prompt,
-                state_schema=RAGAgentState,  # Schema d'etat avec company_id pour InjectedState
+                prompt=system_prompt,
+                state_schema=RAGAgentState,
                 checkpointer=self.memory
             )
 
@@ -227,49 +227,41 @@ class SimpleAgent:
         L'agent est créé via create_agent() de LangChain qui configure:
         - Le LLM (Mistral ou Ollama)
         - Les tools disponibles (search_documents si RAG activé)
-        - Le system prompt qui guide le comportement du LLM
+        - Le system prompt (statique ou Callable pour RAG dynamique)
         - Le checkpointer pour la mémoire persistante (PostgreSQL)
 
-        FLUX AVEC RAG:
-        ==============
-        User message → LLM analyse → LLM décide d'appeler search_documents
-                                            ↓
-                                   search_documents(query)
-                                            ↓
-                                   Résultat injecté dans le contexte
-                                            ↓
-                                   LLM génère la réponse finale
+        FLUX RAG DIRECT:
+        ================
+        User message → Recherche DB → rag_context dans state → prompt Callable lit state
+                                                                        ↓
+                                                               Prompt avec contexte injecté
+                                                                        ↓
+                                                               LLM génère la réponse
         """
         try:
             # Liste des tools disponibles pour le LLM
-            # Si RAG activé: le LLM peut appeler search_documents quand il le juge nécessaire
-            # Si RAG désactivé: liste vide, le LLM répond sans recherche de documents
             tools = [self.search_tool] if self.enable_rag and self.search_tool else []
 
-            # Le system prompt guide le comportement du LLM
-            # SYSTEM_PROMPT_RAG inclut des instructions pour utiliser le tool de recherche
-            system_prompt = settings.SYSTEM_PROMPT_RAG if self.enable_rag else settings.SYSTEM_PROMPT
-
-            # Création de l'agent LangGraph
-            # Le LLM décidera automatiquement quand appeler les tools
-            # Import conditionnel pour éviter import circulaire
             state_schema = None
+            prompt = settings.SYSTEM_PROMPT  # Défaut: prompt statique
+
             if self.enable_rag:
                 from src.tools.rag_tools import RAGAgentState
                 state_schema = RAGAgentState
+                prompt = settings.SYSTEM_PROMPT_RAG  # Prompt RAG statique
 
-            self.agent = create_agent(
+            self.agent = create_react_agent(
                 model=self.llm,
                 tools=tools,
-                system_prompt=system_prompt,
-                state_schema=state_schema,  # Schema avec company_id pour le filtrage multi-tenant
-                checkpointer=self.memory  # Mémoire PostgreSQL pour persistance
+                prompt=prompt,
+                state_schema=state_schema,
+                checkpointer=self.memory
             )
 
             if self.enable_rag:
-                logger.info("Agent cree avec le tool search_documents (RAG actif)")
+                logger.info("Agent cree avec RAG (contexte injecte dans message)")
             else:
-                logger.info("Agent cree sans tools (mode simple)")
+                logger.info("Agent cree sans RAG (mode simple)")
         except Exception as e:
             raise AgentError(f"Erreur lors de la creation de l'agent: {e}")
 
@@ -316,15 +308,40 @@ class SimpleAgent:
             logger.debug("Agent non initialise - levee d'exception")
             raise AgentError("L'agent n'est pas initialise. Appelez initialize() d'abord.")
 
+        # ========== RAG Direct: Recherche systematique AVANT l'appel LLM ==========
+        if self.enable_rag and self.rag_service:
+            logger.debug(f"RAG Direct: Recherche dans la DB pour: {user_input[:50]}...")
+            rag_context = self.rag_service.search_formatted(user_input, company_id=company_id)
+
+            if not rag_context:
+                # Aucun document trouve -> reponse directe (pas d'appel LLM)
+                logger.info(f"RAG Direct: Aucun document trouve pour company_id={company_id}")
+                yield "Je n'ai pas cette information dans notre documentation."
+                return
+
+            logger.debug(f"RAG Direct: {len(rag_context)} caracteres de contexte recuperes")
+
+            # Injecter le contexte dans le message utilisateur
+            user_input = f"CONTEXTE DOCUMENTAIRE:\n{rag_context}\n\n---\nQUESTION: {user_input}"
+        # ==========================================================================
+
         config = {"configurable": {"thread_id": thread_id}}
         logger.debug(f"Configuration agent: {config}")
         provider_name = self.llm_adapter.provider_name if self.llm_adapter else "unknown"
         logger.debug(f"Demarrage du streaming avec le LLM provider: {provider_name}")
 
-        # Preparer l'etat avec company_id pour InjectedState
+        # Preparer l'etat (contexte deja injecte dans user_input)
         input_state = {"messages": [HumanMessage(content=user_input)]}
         if company_id:
             input_state["company_id"] = company_id
+
+        # ========== DEBUG: Afficher ce qui est envoye au LLM ==========
+        logger.debug("=" * 60)
+        logger.debug("ENVOI AU LLM - DEBUG")
+        logger.debug(f"Message ({len(user_input)} chars): {user_input[:500]}...")
+        logger.debug(f"Company ID: {company_id}")
+        logger.debug("=" * 60)
+        # ==============================================================
 
         try:
             # Utiliser l'agent personnalise si disponible (multi-tenant)

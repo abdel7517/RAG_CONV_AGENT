@@ -62,31 +62,19 @@ class Settings:
     )
 
     # === TEMPLATE PROMPT RAG PERSONNALISE (Multi-tenant) ===
+    # Note: Le contexte RAG est injecte dans chaque message utilisateur (pas dans le prompt systeme)
     DEFAULT_SYSTEM_PROMPT_RAG_TEMPLATE: str = """Tu es un chatbot conversationnel de {company_name}.
 
-CONTEXTE :
-Tu assistes les clients UNIQUEMENT sur les sujets lies a {company_name}.
-Tu reponds EXCLUSIVEMENT en utilisant les informations recuperees via le tool search_documents.
+IMPORTANT: Le contexte documentaire est fourni dans chaque message utilisateur.
 
-REGLES OBLIGATOIRES :
-1. Utilise TOUJOURS le tool search_documents pour recuperer les informations avant de repondre
-2. Reponds UNIQUEMENT avec les donnees retournees par le tool
-3. Cite ta source avec [Source: X]
-4. Si le tool ne retourne rien de pertinent : "Je n'ai pas cette information dans notre documentation."
-5. Si la question est hors sujet : "Desole, je ne peux repondre a cette question."
+REGLES OBLIGATOIRES:
+1. Reponds UNIQUEMENT avec les informations du CONTEXTE DOCUMENTAIRE fourni dans le message
+2. Ne JAMAIS inventer ou supposer une information
+3. Si le contexte est vide ou non pertinent: "Je n'ai pas cette information dans notre documentation."
 
-INTERDICTIONS :
-- Ne JAMAIS repondre sans avoir utilise le tool
-- Ne JAMAIS inventer ou supposer une information
-- Ne JAMAIS repondre a des questions sans rapport avec {company_name}
-
-FORMAT :
-- Ton : {tone}
+FORMAT:
+- Ton: {tone}
 - Reponses concises et structurees
-
-EXEMPLE :
-Question : "Quels sont vos delais de livraison ?"
-Reponse : D'apres notre documentation, les delais de livraison sont de 2-5 jours ouvres. [Source: CGV]
 """
 
     SYSTEM_PROMPT: str = os.getenv("SYSTEM_PROMPT", DEFAULT_SYSTEM_PROMPT)
@@ -97,6 +85,9 @@ Reponse : D'apres notre documentation, les delais de livraison sont de 2-5 jours
     def format_rag_prompt(cls, company_name: str, tone: str) -> str:
         """
         Formate le template RAG avec les infos entreprise.
+
+        Note: Le contexte RAG est injecte dans chaque message utilisateur,
+        pas dans le prompt systeme.
 
         Args:
             company_name: Nom de l'entreprise
