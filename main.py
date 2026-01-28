@@ -34,6 +34,7 @@ from src.config import settings
 
 container = Container()
 container.config.llm_provider.from_value(settings.LLM_PROVIDER)
+container.config.channel_type.from_value(settings.CHANNEL_TYPE)
 container.wire(modules=["src.agents.simple_agent"])
 
 
@@ -118,28 +119,30 @@ def run_rag_agent(thread_id: str):
         sys.exit(1)
 
 
-def run_serve_agent(channel_type: str, redis_url: str, enable_rag: bool = False):
-    """Lance l'agent en mode serveur avec gestion des erreurs."""
+def run_serve_agent(enable_rag: bool = False):
+    """
+    Lance l'agent en mode serveur avec gestion des erreurs.
+
+    Le MessageChannel est injecté automatiquement via @inject dans serve().
+    Le type de canal (redis/memory) est configuré via container.config.channel_type.
+    """
     try:
-        from src.messaging import create_channel
         from src.agents import SimpleAgent
 
         agent = SimpleAgent(enable_rag=enable_rag)
         agent_type = "RAG" if enable_rag else "Simple"
 
         print(f"Demarrage de l'agent {agent_type} en mode serveur...")
-        print(f"Type de canal: {channel_type}")
-        if channel_type == "redis":
-            print(f"URL Redis: {redis_url}")
-
-        channel = create_channel(channel_type, url=redis_url)
-        print(f"Canal {channel_type} configure.")
+        print(f"Type de canal: {settings.CHANNEL_TYPE}")
+        if settings.CHANNEL_TYPE == "redis":
+            print(f"URL Redis: {settings.REDIS_URL}")
 
         print(f"\nAgent {agent_type} pret a recevoir des messages sur inbox:*")
         print("(L'initialisation async se fera automatiquement)")
+        print("(MessageChannel injecte via @inject)")
         print("Appuyez sur Ctrl+C pour arreter.\n")
 
-        asyncio.run(agent.serve(channel))
+        asyncio.run(agent.serve())
 
     except KeyboardInterrupt:
         print("\nArret demande par l'utilisateur.")
@@ -358,16 +361,16 @@ Exemples:
         run_rag_agent(thread_id)
 
     elif args.command == "serve":
-        from src.config import settings
-        channel_type = args.channel_type or settings.CHANNEL_TYPE
-        redis_url = args.redis_url or settings.REDIS_URL
-        run_serve_agent(channel_type, redis_url, enable_rag=False)
+        # Reconfigurer le channel si override via CLI
+        if args.channel_type:
+            container.config.channel_type.from_value(args.channel_type)
+        run_serve_agent(enable_rag=False)
 
     elif args.command == "serve-rag":
-        from src.config import settings
-        channel_type = args.channel_type or settings.CHANNEL_TYPE
-        redis_url = args.redis_url or settings.REDIS_URL
-        run_serve_agent(channel_type, redis_url, enable_rag=True)
+        # Reconfigurer le channel si override via CLI
+        if args.channel_type:
+            container.config.channel_type.from_value(args.channel_type)
+        run_serve_agent(enable_rag=True)
 
     elif args.command == "index-documents":
         if not args.company_id:

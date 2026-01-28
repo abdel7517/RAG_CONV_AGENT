@@ -18,9 +18,10 @@ from src.config import settings
 from src.infrastructure.container import Container
 from src.application.services.rag_service import RAGService
 from src.domain.ports.llm_port import LLMPort
+from src.messaging import MessageChannel
 
 if TYPE_CHECKING:
-    from src.messaging import MessageChannel, Message
+    from src.messaging import Message
 
 logger = logging.getLogger(__name__)
 
@@ -356,9 +357,10 @@ class SimpleAgent:
             logger.debug(f"Exception inattendue - {type(e).__name__}: {e}", exc_info=True)
             raise AgentError(f"Erreur lors de la generation de la reponse: {e}")
 
+    @inject
     async def serve(
         self,
-        channel: "MessageChannel",
+        channel: MessageChannel = Provide[Container.message_channel],
         inbox_pattern: str = "inbox:*",
         outbox_prefix: str = "outbox:"
     ):
@@ -368,8 +370,13 @@ class SimpleAgent:
         Cette methode permet a l'agent de fonctionner en mode serveur,
         ecoutant les messages sur un canal et repondant de maniere asynchrone.
 
+        Architecture Hexagonale avec @inject:
+        =====================================
+        Le MessageChannel est injecté automatiquement via Provide[].
+        Le type de canal (redis/memory) est sélectionné selon container.config.channel_type.
+
         Args:
-            channel: Canal de messages (Redis, In-Memory, etc.)
+            channel: Canal de messages injecté (Redis ou InMemory)
             inbox_pattern: Pattern pour les messages entrants (defaut: "inbox:*")
             outbox_prefix: Prefixe pour les canaux de sortie (defaut: "outbox:")
 

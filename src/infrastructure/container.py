@@ -19,6 +19,7 @@ from src.infrastructure.adapters.langchain_retriever_adapter import LangChainRet
 from src.infrastructure.adapters.ollama_adapter import OllamaAdapter
 from src.infrastructure.adapters.mistral_adapter import MistralAdapter
 from src.infrastructure.adapters.openai_adapter import OpenAIAdapter
+from src.messaging import RedisMessageChannel, InMemoryMessageChannel
 from src.application.services.rag_service import RAGService
 from src.tools.rag_tools import create_search_tool
 
@@ -135,4 +136,32 @@ class Container(containers.DeclarativeContainer):
             └── rag_service
                     └── retriever
                             └── vector_store
+    """
+
+    # =========================================================================
+    # MESSAGING
+    # =========================================================================
+
+    redis_channel = providers.Singleton(
+        RedisMessageChannel,
+        url=settings.REDIS_URL
+    )
+    """Canal Redis (Singleton)."""
+
+    memory_channel = providers.Singleton(InMemoryMessageChannel)
+    """Canal In-Memory (Singleton) - pour tests ou dev local."""
+
+    message_channel = providers.Selector(
+        config.channel_type,
+        redis=redis_channel,
+        memory=memory_channel,
+    )
+    """
+    Sélecteur MessageChannel basé sur la configuration.
+
+    Usage:
+        container.config.channel_type.from_value("redis")
+        channel = container.message_channel()  # Retourne RedisMessageChannel
+
+    Le canal est sélectionné automatiquement selon settings.CHANNEL_TYPE
     """
