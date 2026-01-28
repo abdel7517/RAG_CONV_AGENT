@@ -12,8 +12,11 @@ import httpx
 from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from dependency_injector.wiring import inject, Provide
 
 from src.config import settings
+from src.infrastructure.container import Container
+from src.application.services.rag_service import RAGService
 
 if TYPE_CHECKING:
     from src.messaging import MessageChannel, Message
@@ -71,8 +74,7 @@ class SimpleAgent:
         self._initialized = False
 
         # Composants RAG (initialises si enable_rag=True)
-        self.vector_store = None
-        self.retriever = None
+        self.rag_service = None  # RAGService encapsule VectorStore + Retriever
         self.search_tool = None
 
         # Cache d'agents par company_id (pour prompts personnalises)
@@ -171,41 +173,36 @@ class SimpleAgent:
                 "Lancez: python main.py setup-db pour plus de details."
             )
 
-    def _setup_rag(self):
+    @inject
+    def _setup_rag(
+        self,
+        rag_service: RAGService = Provide[Container.rag_service]
+    ):
         """
         Configure les composants RAG si enable_rag=True.
 
-        Cette méthode initialise la chaîne de composants nécessaires
-        pour la recherche de documents:
+        Architecture Hexagonale avec @inject:
+        =====================================
+        Le RAGService est injecté automatiquement via Provide[].
+        Le wire() dans main.py connecte le container à ce module.
 
-        VectorStore → Retriever → search_tool
-            │             │            │
-            │             │            └── Tool LangChain appelable par le LLM
-            │             └── Wrapper qui formate les résultats
-            └── Connexion à pgvector (PostgreSQL)
-
-        Le tool sera ensuite passé à create_agent() dans _create_agent().
-        Voir docs/RAG_TOOL_FLOW.md pour le flux complet.
+        Flow:
+            main.py wire() → @inject détecte Provide[] → container.rag_service()
         """
         if not self.enable_rag:
             return
 
-        from src.retrieval import VectorStore, Retriever
-        from src.tools.rag_tools import create_search_documents_tool
+        from src.tools.rag_tools import create_search_tool
 
-        logger.info("Configuration des composants RAG...")
+        logger.info("Configuration RAG avec @inject...")
 
-        # 1. VectorStore: interface avec pgvector pour le stockage/recherche vectorielle
-        self.vector_store = VectorStore()
+        # RAGService injecté automatiquement via Provide[]
+        self.rag_service = rag_service
 
-        # 2. Retriever: wrapper qui effectue la recherche et formate les résultats
-        self.retriever = Retriever(self.vector_store)
+        # Tool: créé via factory avec RAGService injecté
+        self.search_tool = create_search_tool(self.rag_service)
 
-        # 3. Tool: fonction décorée @tool que le LLM peut appeler
-        #    Le retriever est passé pour être utilisé comme instance globale
-        self.search_tool = create_search_documents_tool(self.retriever)
-
-        logger.info("Composants RAG initialises")
+        logger.info("RAG configuré avec @inject")
 
     async def _setup_company_context(self, company_id: str) -> None:
         """

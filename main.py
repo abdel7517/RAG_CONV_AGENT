@@ -28,6 +28,11 @@ logging.basicConfig(
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
+# Container DI global + wire pour @inject
+from src.infrastructure.container import Container
+container = Container()
+container.wire(modules=["src.agents.simple_agent"])
+
 
 def print_error(message: str):
     """Affiche un message d'erreur formate."""

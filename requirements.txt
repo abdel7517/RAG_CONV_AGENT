@@ -23,3 +23,6 @@ sse-starlette>=2.0.0
 redis>=5.0.0
 httpx>=0.25.0
 pydantic[email]>=2.0.0
+
+# Dependency Injection
+dependency-injector>=4.40.0

@@ -4,32 +4,31 @@ Tools RAG pour l'agent LangChain/LangGraph.
 Ce module définit les "tools" que l'agent peut utiliser pour effectuer
 des recherches dans la base de documents vectorielle.
 
+Architecture Hexagonale:
+========================
+- Le RAGService est créé via Container avec injection des ports
+- Le tool est créé via une factory function `create_search_tool()`
+- Facilement testable avec des mocks des ports (VectorStorePort, RetrieverPort)
+
 FLUX D'APPEL:
 =============
 1. L'utilisateur pose une question à l'agent
-2. Le LLM (Mistral/Ollama) analyse la question
-3. Le LLM DÉCIDE d'appeler search_documents si la question nécessite
-   des informations de la documentation
-4. search_documents() est exécuté automatiquement par LangGraph
-5. Le résultat (documents pertinents) est retourné au LLM
-6. Le LLM utilise ce contexte pour formuler sa réponse finale
-
-IMPORTANT: Le LLM décide seul quand appeler le tool, basé sur:
-- Le system prompt (SYSTEM_PROMPT_RAG)
-- La nature de la question
-- Le contexte de la conversation
+2. Le LLM analyse la question
+3. Le LLM DÉCIDE d'appeler search_documents si nécessaire
+4. search_documents() utilise le RAGService injecté (via Container)
+5. Le résultat est retourné au LLM pour la réponse finale
 
 Voir docs/RAG_TOOL_FLOW.md pour plus de détails.
 """
 
 import logging
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from langchain.tools import tool, ToolRuntime
 from langchain.agents import AgentState
 
-from src.retrieval.retriever import Retriever
-from src.retrieval.vector_store import VectorStore
+if TYPE_CHECKING:
+    from src.application.services.rag_service import RAGService
 
 logger = logging.getLogger(__name__)
 
@@ -37,122 +36,77 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 # ÉTAT PERSONNALISÉ POUR LE MULTI-TENANT
 # ============================================================================
-# RAGAgentState étend AgentState avec company_id pour le filtrage des documents.
-# Cet état est passé aux tools via InjectedState (injecté automatiquement).
-# ============================================================================
 
 class RAGAgentState(AgentState):
     """
     État personnalisé avec company_id pour le filtrage multi-tenant.
 
-    Utilisé avec state_schema dans create_agent() et InjectedState dans les tools.
+    Utilisé avec state_schema dans create_agent() pour que le tool
+    puisse accéder au company_id via ToolRuntime.
     """
     company_id: Optional[str]
 
+
 # ============================================================================
-# GESTION DU RETRIEVER GLOBAL
-# ============================================================================
-# On utilise une instance globale pour que le tool (qui est une fonction)
-# puisse accéder au retriever configuré par SimpleAgent.
-# L'alternative serait d'utiliser des closures, mais c'est plus complexe.
+# FACTORY POUR LE TOOL (Injection de dépendances via closure)
 # ============================================================================
 
-_retriever: Optional[Retriever] = None
-
-
-def get_retriever() -> Retriever:
-    """Retourne l'instance globale du retriever."""
-    global _retriever
-    if _retriever is None:
-        # Fallback: crée un retriever par défaut si non configuré
-        _retriever = Retriever(VectorStore())
-    return _retriever
-
-
-def set_retriever(retriever: Retriever) -> None:
+def create_search_tool(rag_service: "RAGService"):
     """
-    Définit l'instance globale du retriever.
+    Factory qui crée le tool search_documents avec RAGService injecté.
 
-    Appelé par create_search_documents_tool() lors de l'initialisation
-    de l'agent avec enable_rag=True.
-    """
-    global _retriever
-    _retriever = retriever
-
-
-
-
-# ============================================================================
-# TOOL: search_documents
-# ============================================================================
-# Le décorateur @tool transforme cette fonction en un "Tool" LangChain.
-#
-# IMPORTANT: La docstring est CRITIQUE car elle est utilisée par le LLM
-# pour comprendre QUAND et COMMENT utiliser le tool.
-#
-# Le paramètre `state` avec InjectedState est automatiquement injecté par
-# LangChain et n'apparaît PAS dans la signature vue par le LLM.
-# ============================================================================
-
-@tool
-def search_documents(
-    query: str,
-    runtime: ToolRuntime[None, RAGAgentState]
-) -> str:
-    """
-    Recherche des informations pertinentes dans la base de documents.
-
-    Utilisez cet outil pour trouver des informations sur les produits,
-    services, politiques ou toute autre question nécessitant une recherche
-    dans la documentation.
+    Pattern: Closure pour injection de dépendance dans un @tool.
+    Le RAGService est capturé dans la closure, éliminant le besoin
+    d'une variable globale.
 
     Args:
-        query: La question ou les mots-clés à rechercher
+        rag_service: Instance de RAGService pour la recherche
 
     Returns:
-        Les extraits de documents pertinents formatés
+        Le tool search_documents configuré
+
+    Usage:
+        rag_service = RAGService()
+        search_tool = create_search_tool(rag_service)
+        # Puis: create_agent(tools=[search_tool], ...)
+
+    Tests:
+        mock_service = Mock(spec=RAGService)
+        search_tool = create_search_tool(mock_service)
+        # Le tool utilise le mock
     """
-    # Récupère le company_id depuis l'état injecté via ToolRuntime
-    company_id = runtime.state.get("company_id")
 
-    logger.info(f"Tool search_documents: query='{query[:100]}...', company_id={company_id}")
+    @tool
+    def search_documents(
+        query: str,
+        runtime: ToolRuntime[None, RAGAgentState]
+    ) -> str:
+        """
+        Recherche des informations pertinentes dans la base de documents.
 
-    try:
-        # 1. Récupère le retriever (configuré par SimpleAgent)
-        retriever = get_retriever()
+        Utilisez cet outil pour trouver des informations sur les produits,
+        services, politiques ou toute autre question nécessitant une recherche
+        dans la documentation.
 
-        # 2. Recherche les documents pertinents FILTRÉS par company_id
-        #    - retrieve() : recherche vectorielle dans pgvector avec filtre
-        #    - format_documents() : formate en texte lisible
-        result = retriever.retrieve_formatted(query, company_id=company_id)
+        Args:
+            query: La question ou les mots-clés à rechercher
 
-        # 3. Le résultat est une string qui sera injectée dans le contexte du LLM
-        logger.debug(f"Résultat de la recherche: {len(result)} caractères")
-        return result
+        Returns:
+            Les extraits de documents pertinents formatés
+        """
+        # Récupère le company_id depuis l'état injecté via ToolRuntime
+        company_id = runtime.state.get("company_id")
 
-    except Exception as e:
-        logger.error(f"Erreur lors de la recherche: {e}")
-        return f"Erreur lors de la recherche dans les documents: {str(e)}"
+        logger.info(f"search_documents: query='{query[:50]}...', company_id={company_id}")
 
+        try:
+            # Utilise le RAGService injecté via closure (pas de variable globale)
+            result = rag_service.search_formatted(query, company_id=company_id)
+            logger.debug(f"Résultat: {len(result)} caractères")
+            return result
 
-def create_search_documents_tool(retriever: Retriever = None):
-    """
-    Factory function pour créer le tool search_documents.
-
-    Appelé par SimpleAgent._setup_rag() lors de l'initialisation.
-
-    Args:
-        retriever: Instance du Retriever à utiliser. Si fourni,
-                   sera défini comme instance globale pour le tool.
-
-    Returns:
-        La fonction search_documents décorée avec @tool
-
-    Usage dans SimpleAgent:
-        self.search_tool = create_search_documents_tool(self.retriever)
-        # Puis passé à create_agent(tools=[self.search_tool])
-    """
-    if retriever:
-        set_retriever(retriever)
+        except Exception as e:
+            logger.error(f"Erreur lors de la recherche: {e}")
+            return f"Erreur lors de la recherche dans les documents: {str(e)}"
 
     return search_documents
