@@ -23,11 +23,10 @@ Voir docs/RAG_TOOL_FLOW.md pour plus de détails.
 """
 
 import logging
-from typing import Annotated, Optional
+from typing import Optional
 
-from langchain_core.tools import tool
+from langchain.tools import tool, ToolRuntime
 from langchain.agents import AgentState
-from langgraph.prebuilt import InjectedState
 
 from src.retrieval.retriever import Retriever
 from src.retrieval.vector_store import VectorStore
@@ -98,7 +97,7 @@ def set_retriever(retriever: Retriever) -> None:
 @tool
 def search_documents(
     query: str,
-    state: Annotated[RAGAgentState, InjectedState]
+    runtime: ToolRuntime[None, RAGAgentState]
 ) -> str:
     """
     Recherche des informations pertinentes dans la base de documents.
@@ -113,8 +112,8 @@ def search_documents(
     Returns:
         Les extraits de documents pertinents formatés
     """
-    # Récupère le company_id depuis l'état injecté (plus de variable globale)
-    company_id = state.get("company_id")
+    # Récupère le company_id depuis l'état injecté via ToolRuntime
+    company_id = runtime.state.get("company_id")
 
     logger.info(f"Tool search_documents: query='{query[:100]}...', company_id={company_id}")
 

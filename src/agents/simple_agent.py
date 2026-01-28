@@ -314,10 +314,17 @@ class SimpleAgent:
 
             # Création de l'agent LangGraph
             # Le LLM décidera automatiquement quand appeler les tools
+            # Import conditionnel pour éviter import circulaire
+            state_schema = None
+            if self.enable_rag:
+                from src.tools.rag_tools import RAGAgentState
+                state_schema = RAGAgentState
+
             self.agent = create_agent(
                 model=self.llm,
                 tools=tools,
                 system_prompt=system_prompt,
+                state_schema=state_schema,  # Schema avec company_id pour le filtrage multi-tenant
                 checkpointer=self.memory  # Mémoire PostgreSQL pour persistance
             )
 
