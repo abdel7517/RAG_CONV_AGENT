@@ -21,6 +21,7 @@ from src.infrastructure.adapters.mistral_adapter import MistralAdapter
 from src.infrastructure.adapters.openai_adapter import OpenAIAdapter
 from src.messaging import RedisMessageChannel, InMemoryMessageChannel
 from src.application.services.rag_service import RAGService
+from src.application.services.messaging_service import MessagingService
 from src.tools.rag_tools import create_search_tool
 
 logger = logging.getLogger(__name__)
@@ -164,4 +165,20 @@ class Container(containers.DeclarativeContainer):
         channel = container.message_channel()  # Retourne RedisMessageChannel
 
     Le canal est sélectionné automatiquement selon settings.CHANNEL_TYPE
+    """
+
+    messaging_service = providers.Singleton(
+        MessagingService,
+        channel=message_channel
+    )
+    """
+    Service de messaging (Singleton).
+
+    Encapsule la logique de canaux (connect, subscribe, publish).
+    L'appelant n'a pas à gérer les patterns (inbox:*, outbox:).
+
+    Usage dans l'agent:
+        async with messaging_service as messaging:
+            async for msg in messaging.listen():
+                await messaging.publish_chunk(email, chunk)
     """

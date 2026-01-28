@@ -17,8 +17,8 @@ from dependency_injector.wiring import inject, Provide
 from src.config import settings
 from src.infrastructure.container import Container
 from src.application.services.rag_service import RAGService
+from src.application.services.messaging_service import MessagingService
 from src.domain.ports.llm_port import LLMPort
-from src.messaging import MessageChannel
 
 if TYPE_CHECKING:
     from src.messaging import Message
@@ -360,60 +360,44 @@ class SimpleAgent:
     @inject
     async def serve(
         self,
-        channel: MessageChannel = Provide[Container.message_channel],
-        inbox_pattern: str = "inbox:*",
-        outbox_prefix: str = "outbox:"
+        messaging: MessagingService = Provide[Container.messaging_service]
     ):
         """
-        Ecoute les messages entrants et repond via le canal.
+        Ecoute les messages entrants et repond via le service de messaging.
 
         Cette methode permet a l'agent de fonctionner en mode serveur,
         ecoutant les messages sur un canal et repondant de maniere asynchrone.
 
         Architecture Hexagonale avec @inject:
         =====================================
-        Le MessageChannel est injecté automatiquement via Provide[].
-        Le type de canal (redis/memory) est sélectionné selon container.config.channel_type.
 
         Args:
-            channel: Canal de messages injecté (Redis ou InMemory)
-            inbox_pattern: Pattern pour les messages entrants (defaut: "inbox:*")
-            outbox_prefix: Prefixe pour les canaux de sortie (defaut: "outbox:")
-
+            messaging: Service de messaging injecté
         """
         # Auto-initialisation si necessaire
         if not self._initialized:
             logger.info("Auto-initialisation...")
             await self.initialize()
 
-        self._outbox_prefix = outbox_prefix
-
-        await channel.connect()
-        await channel.subscribe(inbox_pattern)
-
-        logger.info(f"Agent en ecoute sur {inbox_pattern}...")
-
-        try:
-            async for msg in channel.listen():
+        async with messaging:
+            logger.info("Agent en écoute...")
+            async for msg in messaging.listen():
                 asyncio.create_task(
-                    self._handle_message(channel, msg)
+                    self._handle_message(messaging, msg)
                 )
-        finally:
-            await channel.disconnect()
 
-    async def _handle_message(self, channel: "MessageChannel", msg: "Message"):
+    async def _handle_message(self, messaging: MessagingService, msg: "Message"):
         """
         Traite un message et publie la reponse.
 
         Args:
-            channel: Canal de messages pour publier la reponse
+            messaging: Service de messaging pour publier la reponse
             msg: Message recu a traiter
         """
         try:
             company_id = msg.data.get("company_id")  # Multi-tenant: ID entreprise
             email = msg.data.get("email", "unknown")
             user_message = msg.data.get("message", "")
-            outbox = f"{self._outbox_prefix}{email}"
 
             logger.info(f"Message de {email} (company: {company_id}): {user_message[:50]}...")
 
@@ -423,19 +407,12 @@ class SimpleAgent:
 
             try:
                 async for chunk in self.chat(user_message, thread_id=email, company_id=company_id):
-                    logger.debug(f"PUBLISH {outbox}: chunk='{chunk[:50]}...' done=False")
-                    await channel.publish(outbox, {"chunk": chunk, "done": False})
-
-                logger.debug(f"PUBLISH {outbox}: chunk='' done=True")
-                await channel.publish(outbox, {"chunk": "", "done": True})
-                logger.info(f"Reponse complete envoyee a {email}")
+                    await messaging.publish_chunk(email, chunk)
+                
+                await messaging.publish_chunk(email, "", done=True)
 
             except Exception as e:
-                logger.error(f"Erreur lors du traitement: {e}")
-                await channel.publish(outbox, {
-                    "chunk": f"Erreur: {str(e)}",
-                    "done": True
-                })
+                await messaging.publish_error(email, str(e))
 
         except KeyError as e:
             logger.error(f"Champ manquant dans le message: {e}")
