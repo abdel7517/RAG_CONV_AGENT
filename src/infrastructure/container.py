@@ -16,6 +16,7 @@ from dependency_injector import containers, providers
 from src.infrastructure.adapters.pgvector_adapter import PGVectorAdapter
 from src.infrastructure.adapters.langchain_retriever_adapter import LangChainRetrieverAdapter
 from src.application.services.rag_service import RAGService
+from src.tools.rag_tools import create_search_tool
 
 logger = logging.getLogger(__name__)
 
@@ -74,9 +75,24 @@ class Container(containers.DeclarativeContainer):
     """
     Service RAG (Singleton).
     Dépend du retriever qui est injecté automatiquement.
+    """
+
+    # =========================================================================
+    # TOOLS
+    # =========================================================================
+
+    search_tool = providers.Factory(
+        create_search_tool,
+        rag_service=rag_service
+    )
+    """
+    Tool de recherche RAG (Factory).
+    Créé via create_search_tool() avec rag_service injecté.
+    Le décorateur @tool est appliqué à l'intérieur de la factory.
 
     Graphe de dépendances:
-        rag_service
-            └── retriever
-                    └── vector_store
+        search_tool
+            └── rag_service
+                    └── retriever
+                            └── vector_store
     """

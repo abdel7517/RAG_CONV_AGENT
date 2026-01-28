@@ -176,31 +176,28 @@ class SimpleAgent:
     @inject
     def _setup_rag(
         self,
-        rag_service: RAGService = Provide[Container.rag_service]
+        rag_service: RAGService = Provide[Container.rag_service],
+        search_tool=Provide[Container.search_tool]
     ):
         """
         Configure les composants RAG si enable_rag=True.
 
         Architecture Hexagonale avec @inject:
         =====================================
-        Le RAGService est injecté automatiquement via Provide[].
+        RAGService et search_tool sont injectés automatiquement via Provide[].
         Le wire() dans main.py connecte le container à ce module.
 
         Flow:
-            main.py wire() → @inject détecte Provide[] → container.rag_service()
+            main.py wire() → @inject détecte Provide[] → container résout les dépendances
         """
         if not self.enable_rag:
             return
 
-        from src.tools.rag_tools import create_search_tool
-
         logger.info("Configuration RAG avec @inject...")
 
-        # RAGService injecté automatiquement via Provide[]
-        self.rag_service = rag_service
 
-        # Tool: créé via factory avec RAGService injecté
-        self.search_tool = create_search_tool(self.rag_service)
+        self.rag_service = rag_service
+        self.search_tool = search_tool
 
         logger.info("RAG configuré avec @inject")
 

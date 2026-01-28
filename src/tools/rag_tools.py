@@ -100,7 +100,6 @@ def create_search_tool(rag_service: "RAGService"):
         logger.info(f"search_documents: query='{query[:50]}...', company_id={company_id}")
 
         try:
-            # Utilise le RAGService injecté via closure (pas de variable globale)
             result = rag_service.search_formatted(query, company_id=company_id)
             logger.debug(f"Résultat: {len(result)} caractères")
             return result
