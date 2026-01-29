@@ -18,6 +18,7 @@ import argparse
 import asyncio
 import logging
 import sys
+from src.application.simple_agent import SimpleAgent
 
 # Configuration du logging
 logging.basicConfig(
@@ -50,7 +51,6 @@ def print_success(message: str):
 def run_simple_agent(thread_id: str):
     """Lance l'agent simple avec gestion des erreurs."""
     try:
-        from src.application import SimpleAgent
         agent = SimpleAgent()
 
         async def run():
@@ -85,7 +85,6 @@ def run_simple_agent(thread_id: str):
 def run_rag_agent(thread_id: str):
     """Lance l'agent RAG avec gestion des erreurs."""
     try:
-        from src.application import SimpleAgent
         agent = SimpleAgent(enable_rag=True)
 
         async def run():
@@ -126,8 +125,6 @@ def run_serve_agent(enable_rag: bool = False):
     Le type de canal (redis/memory) est configuré via container.config.channel_type.
     """
     try:
-        from src.application import SimpleAgent
-
         agent = SimpleAgent(enable_rag=enable_rag)
         agent_type = "RAG" if enable_rag else "Simple"
 
