@@ -7,7 +7,7 @@ Agent conversationnel intelligent avec **RAG** (Retrieval Augmented Generation),
 - **Agent LangChain** avec memoire persistante (PostgreSQL)
 - **RAG** : recherche semantique dans des documents PDF avec pgvector (PostgreSQL)
 - **Multi-tenant** : filtrage des documents par `company_id` pour isoler les donnees par entreprise
-- **Multi-LLM** : support Ollama (local) et Mistral (API cloud)
+- **Multi-LLM** : support Ollama (local), Mistral (API cloud) et OpenAI (API cloud)
 - **API REST** avec FastAPI
 - **Streaming temps reel** via SSE + Redis Pub/Sub
 - **Interface web React** avec chat en temps reel
@@ -42,7 +42,7 @@ Agent conversationnel intelligent avec **RAG** (Retrieval Augmented Generation),
 |-----------|--------------|
 | **Agent** | LangChain, LangGraph |
 | **RAG** | pgvector (PostgreSQL), pypdf |
-| **LLM** | Ollama (local) / Mistral (cloud) |
+| **LLM** | Ollama (local) / Mistral (cloud) / OpenAI (cloud) |
 | **Backend** | FastAPI, SSE, Redis Pub/Sub |
 | **Frontend** | React, Vite, shadcn/ui |
 | **Database** | PostgreSQL (memoire + vectors), Redis (messaging) |
@@ -246,18 +246,34 @@ CHUNK_OVERLAP=200
 
 ## Concepts Cles
 
-### RAG (Retrieval Augmented Generation)
+### RAG Direct (Retrieval Augmented Generation)
 
-L'agent utilise pgvector (extension PostgreSQL) pour le stockage vectoriel :
+L'agent utilise pgvector (extension PostgreSQL) pour le stockage vectoriel avec une approche **RAG Direct** :
+la recherche en base est effectuee **systematiquement avant chaque appel LLM**, et le contexte est injecte dans le message.
 
 1. **Indexation** : PDFs → Chunks → Embeddings → pgvector (avec `company_id`)
-2. **Query** : Question → Recherche semantique (filtree par `company_id`) → Contexte → LLM → Reponse
+2. **Query** : Question → Recherche semantique (filtree par `company_id`) → Contexte injecte dans le message → LLM → Reponse
+
+```
+User: "Quels sont vos delais ?"
+  │
+  ▼
+chat() → rag_service.search_formatted(query, company_id)
+  │
+  ├─ Aucun document → "Je n'ai pas cette information." (pas d'appel LLM)
+  │
+  └─ Documents trouves → Message enrichi:
+       "CONTEXTE DOCUMENTAIRE:\n{contexte}\n\n---\nQUESTION: {question}"
+         │
+         ▼
+       LLM repond en se basant uniquement sur le contexte
+```
 
 ```python
 # Agent sans RAG
 agent = SimpleAgent()
 
-# Agent avec RAG active
+# Agent avec RAG active (recherche systematique avant LLM)
 agent = SimpleAgent(enable_rag=True)
 ```
 
