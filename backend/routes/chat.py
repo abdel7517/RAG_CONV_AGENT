@@ -2,29 +2,20 @@
 import json
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, EmailStr
+from fastapi import APIRouter, Depends, HTTPException
 
-from ..dependencies import broadcast
+from backend.domain.models.chat import ChatRequest, ChatResponse
+from backend.domain.ports.event_broker_port import EventBrokerPort
+from backend.dependencies import get_event_broker
 
 router = APIRouter()
 
 
-class ChatRequest(BaseModel):
-    """Schema pour la requete de chat."""
-    company_id: str  # ID unique de l'entreprise (multi-tenant)
-    email: EmailStr
-    message: str
-
-
-class ChatResponse(BaseModel):
-    """Schema pour la reponse de chat."""
-    status: str
-    channel: str
-
-
 @router.post("/chat", response_model=ChatResponse)
-async def send_message(request: ChatRequest):
+async def send_message(
+    request: ChatRequest,
+    broker: EventBrokerPort = Depends(get_event_broker),
+):
     """
     Envoie un message utilisateur vers l'agent.
 
@@ -46,7 +37,7 @@ async def send_message(request: ChatRequest):
         "timestamp": datetime.now(timezone.utc).isoformat()
     })
 
-    await broadcast.publish(channel=channel, message=payload)
+    await broker.publish(channel=channel, message=payload)
 
     return ChatResponse(
         status="queued",

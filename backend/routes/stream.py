@@ -2,10 +2,11 @@
 import asyncio
 import json
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from sse_starlette.sse import EventSourceResponse
 
-from ..dependencies import broadcast
+from backend.domain.ports.event_broker_port import EventBrokerPort
+from backend.dependencies import get_event_broker
 
 router = APIRouter()
 
@@ -13,7 +14,10 @@ HEARTBEAT_INTERVAL = 30  # secondes
 
 
 @router.get("/stream/{email}")
-async def stream_response(email: str):
+async def stream_response(
+    email: str,
+    broker: EventBrokerPort = Depends(get_event_broker),
+):
     """
     SSE endpoint pour recevoir les reponses de l'agent en streaming.
 
@@ -23,15 +27,15 @@ async def stream_response(email: str):
     async def event_generator():
         channel = f"outbox:{email}"
 
-        async with broadcast.subscribe(channel=channel) as subscriber:
+        async with broker.subscribe(channel=channel) as subscription:
             while True:
                 try:
-                    event = await asyncio.wait_for(
-                        subscriber.get(),
+                    raw = await asyncio.wait_for(
+                        subscription.get(),
                         timeout=HEARTBEAT_INTERVAL
                     )
 
-                    data = json.loads(event.message)
+                    data = json.loads(raw)
                     yield {"event": "message", "data": json.dumps(data)}
 
                     if data.get("done", False):

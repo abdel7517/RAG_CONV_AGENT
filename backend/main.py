@@ -9,16 +9,17 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .dependencies import broadcast
+from .dependencies import get_event_broker
 from .routes import chat_router, stream_router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Gestion du cycle de vie de l'application."""
-    await broadcast.connect()
+    broker = get_event_broker()
+    await broker.connect()
     yield
-    await broadcast.disconnect()
+    await broker.disconnect()
 
 
 app = FastAPI(
