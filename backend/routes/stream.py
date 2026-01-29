@@ -4,9 +4,10 @@ import json
 
 from fastapi import APIRouter, Depends
 from sse_starlette.sse import EventSourceResponse
+from dependency_injector.wiring import inject, Provide
 
 from backend.domain.ports.event_broker_port import EventBrokerPort
-from backend.dependencies import get_event_broker
+from backend.infrastructure.container import Container
 
 router = APIRouter()
 
@@ -14,9 +15,10 @@ HEARTBEAT_INTERVAL = 30  # secondes
 
 
 @router.get("/stream/{email}")
+@inject
 async def stream_response(
     email: str,
-    broker: EventBrokerPort = Depends(get_event_broker),
+    broker: EventBrokerPort = Depends(Provide[Container.event_broker]),
 ):
     """
     SSE endpoint pour recevoir les reponses de l'agent en streaming.

@@ -3,18 +3,20 @@ import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+from dependency_injector.wiring import inject, Provide
 
 from backend.domain.models.chat import ChatRequest, ChatResponse
 from backend.domain.ports.event_broker_port import EventBrokerPort
-from backend.dependencies import get_event_broker
+from backend.infrastructure.container import Container
 
 router = APIRouter()
 
 
 @router.post("/chat", response_model=ChatResponse)
+@inject
 async def send_message(
     request: ChatRequest,
-    broker: EventBrokerPort = Depends(get_event_broker),
+    broker: EventBrokerPort = Depends(Provide[Container.event_broker]),
 ):
     """
     Envoie un message utilisateur vers l'agent.
