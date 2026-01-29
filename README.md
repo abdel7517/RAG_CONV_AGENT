@@ -36,6 +36,28 @@ Agent conversationnel intelligent avec **RAG** (Retrieval Augmented Generation),
                                    └──────────────┘
 ```
 
+### Flow detaille
+
+```
+Frontend                    Backend (FastAPI)              Redis             Worker (LangChain)
+   │                              │                          │                  │
+   ├── POST /api/chat ──────────► │                          │                  │
+   │   {email, message}           ├── broker.publish() ────► │                  │
+   │                              │   inbox:email            │                  │
+   │   ◄── {status: "queued"} ────┤                          │                  │
+   │                              │                          ├── inbox:email ──►│
+   │                              │                          │                  │ RAG + LLM
+   ├── GET /stream/email ────────►│                          │                  │
+   │   (SSE connexion ouverte)    ├── broker.subscribe() ──► │                  │
+   │                              │   outbox:email           │  ◄── chunk 1 ────┤
+   │   ◄── chunk 1 ───────────────┤ ◄────────────────────────┤                  │
+   │   ◄── chunk 2 ───────────────┤ ◄────────────────────────┤  ◄── chunk 2 ────┤
+   │   ◄── {done: true} ──────────┤ ◄────────────────────────┤  ◄── done ───────┤
+   │   (connexion fermee)         │                          │                  │
+```
+
+> Le backend est un **passe-plat** : il ne fait aucune IA. Il recoit du frontend, publie dans Redis, et retransmet les reponses du worker vers le frontend via SSE.
+
 ## Stack Technique
 
 | Composant | Technologies |
