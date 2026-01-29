@@ -25,3 +25,8 @@ Thumbs.db
 venv/
 node_modules/
 documents/
+.claude/
+.serena/
+docs/
+.mcp.json
+CLAUDE.md
