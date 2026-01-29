@@ -31,16 +31,30 @@ class VectorStore:
         self._vector_store: Optional[PGVectorStore] = None
 
     def _get_embeddings(self):
-        """Retourne le modèle d'embeddings selon le provider configuré."""
+        """Retourne le modèle d'embeddings selon le provider configuré (EMBEDDING_PROVIDER)."""
         if self._embeddings is None:
-            if settings.LLM_PROVIDER == "ollama":
+            provider = settings.EMBEDDING_PROVIDER
+            if provider == "ollama":
                 from langchain_ollama import OllamaEmbeddings
                 self._embeddings = OllamaEmbeddings(
                     model=settings.OLLAMA_EMBEDDING_MODEL,
                     base_url=settings.OLLAMA_BASE_URL
                 )
                 logger.info(f"Utilisation des embeddings Ollama: {settings.OLLAMA_EMBEDDING_MODEL}")
-            else:
+            elif provider == "openai":
+                from langchain_openai import OpenAIEmbeddings
+                self._embeddings = OpenAIEmbeddings(
+                    model=settings.OPENAI_EMBEDDING_MODEL,
+                    api_key=settings.OPENAI_API_KEY
+                )
+                logger.info(f"Utilisation des embeddings OpenAI: {settings.OPENAI_EMBEDDING_MODEL}")
+            elif provider == "huggingface":
+                from langchain_huggingface import HuggingFaceEmbeddings
+                self._embeddings = HuggingFaceEmbeddings(
+                    model_name=settings.HUGGINGFACE_EMBEDDING_MODEL
+                )
+                logger.info(f"Utilisation des embeddings HuggingFace: {settings.HUGGINGFACE_EMBEDDING_MODEL}")
+            else:  # mistral par defaut
                 from langchain_mistralai import MistralAIEmbeddings
                 self._embeddings = MistralAIEmbeddings(
                     model=settings.MISTRAL_EMBEDDING_MODEL,

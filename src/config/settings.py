@@ -19,8 +19,13 @@ class Settings:
     """
 
     # === CONFIGURATION LLM PROVIDER ===
-    LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "ollama")  # "ollama" ou "mistral"
+    LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "ollama")  # "ollama", "mistral" ou "openai"
     MODEL_TEMPERATURE: float = float(os.getenv("MODEL_TEMPERATURE", "0.7"))
+
+    # === CONFIGURATION EMBEDDING PROVIDER ===
+    # Permet d'utiliser un provider d'embedding different du LLM (ex: LLM OpenAI + embeddings HuggingFace)
+    # Valeurs possibles: ollama, mistral, openai, huggingface
+    EMBEDDING_PROVIDER: str = os.getenv("EMBEDDING_PROVIDER", os.getenv("LLM_PROVIDER", "ollama"))
 
     # === CONFIGURATION OLLAMA ===
     OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "phi3:mini")
@@ -35,6 +40,10 @@ class Settings:
     # === CONFIGURATION OPENAI ===
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    OPENAI_EMBEDDING_MODEL: str = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+
+    # === CONFIGURATION HUGGINGFACE EMBEDDINGS ===
+    HUGGINGFACE_EMBEDDING_MODEL: str = os.getenv("HUGGINGFACE_EMBEDDING_MODEL", "intfloat/multilingual-e5-large")
 
     # === CONFIGURATION POSTGRESQL ===
     POSTGRES_HOST: str = os.getenv("POSTGRES_HOST", "localhost")
