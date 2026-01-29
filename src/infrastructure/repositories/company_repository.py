@@ -8,7 +8,7 @@ from typing import Optional
 import psycopg
 
 from src.config import settings
-from src.models.company import Company
+from src.domain.models.company import Company
 
 logger = logging.getLogger(__name__)
 

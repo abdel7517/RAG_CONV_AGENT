@@ -54,7 +54,9 @@ Agent conversationnel intelligent avec **RAG** (Retrieval Augmented Generation),
 ```
 RAG_CONV_AGENT/
 ├── src/
-│   ├── domain/                          # Couche Domain (ports/interfaces)
+│   ├── domain/                          # Couche Domain (entites + ports)
+│   │   ├── models/
+│   │   │   └── company.py               # Modele Company (multi-tenant)
 │   │   └── ports/
 │   │       ├── vector_store_port.py     # Interface VectorStore
 │   │       ├── retriever_port.py        # Interface Retriever
@@ -78,16 +80,13 @@ RAG_CONV_AGENT/
 │   │   │   ├── ollama_adapter.py        # Ollama LLM (LLMPort)
 │   │   │   ├── mistral_adapter.py       # Mistral LLM (LLMPort)
 │   │   │   └── openai_adapter.py        # OpenAI LLM (LLMPort)
-│   │   └── container.py                 # Container DI (dependency-injector)
+│   │   ├── repositories/
+│   │   │   └── company_repository.py    # Repository Company (PostgreSQL)
+│   │   ├── container.py                 # Container DI (dependency-injector)
+│   │   └── db_setup.py                  # Setup PostgreSQL
 │   │
-│   ├── config/
-│   │   └── settings.py                  # Configuration centralisee
-│   ├── models/
-│   │   └── company.py                   # Modele Company (multi-tenant)
-│   ├── repositories/
-│   │   └── company_repository.py        # Repository Company (PostgreSQL)
-│   └── utils/
-│       └── db_setup.py                  # Setup PostgreSQL
+│   └── config/
+│       └── settings.py                  # Configuration centralisee
 │
 ├── backend/                             # API FastAPI
 │   ├── main.py                          # Application FastAPI

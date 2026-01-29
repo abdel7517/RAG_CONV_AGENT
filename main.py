@@ -207,7 +207,7 @@ def run_index_documents(
 def run_setup_db():
     """Configure PostgreSQL avec gestion des erreurs."""
     try:
-        from src.utils import setup_postgres
+        from src.infrastructure.db_setup import setup_postgres
         success = setup_postgres()
         sys.exit(0 if success else 1)
     except KeyboardInterrupt:
@@ -224,8 +224,8 @@ def run_setup_db():
 def run_add_company(company_id: str, name: str, tone: str):
     """Ajoute ou met a jour une entreprise dans la base de donnees."""
     try:
-        from src.repositories.company_repository import CompanyRepository
-        from src.models.company import Company
+        from src.infrastructure.repositories.company_repository import CompanyRepository
+        from src.domain.models.company import Company
 
         async def add():
             repo = CompanyRepository()
@@ -250,7 +250,7 @@ def run_add_company(company_id: str, name: str, tone: str):
 def run_list_companies():
     """Liste toutes les entreprises configurees."""
     try:
-        from src.repositories.company_repository import CompanyRepository
+        from src.infrastructure.repositories.company_repository import CompanyRepository
 
         async def list_all():
             repo = CompanyRepository()

@@ -176,7 +176,7 @@ class SimpleAgent:
             return
 
         # Sinon, recuperer les infos entreprise et creer l'agent
-        from src.repositories.company_repository import CompanyRepository
+        from src.infrastructure.repositories.company_repository import CompanyRepository
 
         repo = CompanyRepository()
         company = await repo.get_by_id(company_id)
