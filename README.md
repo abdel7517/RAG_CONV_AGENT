@@ -43,6 +43,7 @@ Agent conversationnel intelligent avec **RAG** (Retrieval Augmented Generation),
 | **Agent** | LangChain, LangGraph |
 | **RAG** | pgvector (PostgreSQL), pypdf |
 | **LLM** | Ollama (local) / Mistral (cloud) / OpenAI (cloud) |
+| **Embeddings** | HuggingFace (local) / Ollama (local) / Mistral (cloud) / OpenAI (cloud) |
 | **Backend** | FastAPI, SSE, Redis Pub/Sub |
 | **Frontend** | React, Vite, shadcn/ui |
 | **Database** | PostgreSQL (memoire + vectors), Redis (messaging) |
@@ -109,19 +110,33 @@ pip install -r requirements.txt
 
 ### 3. Configurer le LLM
 
-**Option A: Ollama (local, gratuit)**
+**Option A: 100% local (gratuit, donnees non partagees a des tiers)**
 ```bash
-# Installer depuis https://ollama.ai
-ollama pull phi3:mini
-ollama pull nomic-embed-text
+# Installer Ollama depuis https://ollama.ai
+ollama pull qwen2.5:7b
 ollama serve
+
+# Dans .env
+LLM_PROVIDER=ollama
+OLLAMA_MODEL=qwen2.5:7b
+EMBEDDING_PROVIDER=huggingface
+HUGGINGFACE_EMBEDDING_MODEL=intfloat/multilingual-e5-large
 ```
+
+> Les embeddings HuggingFace sont telecharges localement via `sentence-transformers`. Aucune donnee n'est envoyee a un service externe.
 
 **Option B: Mistral (cloud)**
 ```bash
 # Dans .env
 LLM_PROVIDER=mistral
 MISTRAL_API_KEY=votre_cle_api
+```
+
+**Option C: OpenAI (cloud)**
+```bash
+# Dans .env
+LLM_PROVIDER=openai
+OPENAI_API_KEY=votre_cle_api
 ```
 
 ### 4. Initialiser la base de donnees
@@ -215,17 +230,24 @@ curl -X POST http://localhost:8000/api/chat \
 Variables d'environnement (`.env`):
 
 ```bash
-# LLM Provider
-LLM_PROVIDER=ollama              # ou "mistral"
-
-# Ollama
-OLLAMA_MODEL=phi3:mini
+# LLM Provider ("ollama", "mistral" ou "openai")
+LLM_PROVIDER=ollama
+OLLAMA_MODEL=qwen2.5:7b
 OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_EMBEDDING_MODEL=nomic-embed-text
+
+# Embedding Provider (optionnel, defaut = LLM_PROVIDER)
+# Permet d'utiliser un provider d'embedding different du LLM
+# Valeurs: ollama, mistral, openai, huggingface
+EMBEDDING_PROVIDER=huggingface
+HUGGINGFACE_EMBEDDING_MODEL=intfloat/multilingual-e5-large
 
 # Mistral (si LLM_PROVIDER=mistral)
 MISTRAL_API_KEY=votre_cle
 MISTRAL_MODEL=mistral-small-latest
+
+# OpenAI (si LLM_PROVIDER=openai)
+OPENAI_API_KEY=votre_cle
+OPENAI_MODEL=gpt-4o-mini
 
 # Redis
 REDIS_URL=redis://localhost:6379
