@@ -8,6 +8,8 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING
 
+from pydantic import BaseModel, ConfigDict, ValidationError, Field
+
 import httpx
 from langgraph.prebuilt import create_react_agent
 from langchain_core.messages import HumanMessage
@@ -45,6 +47,18 @@ class AgentError(Exception):
     """Erreur generale de l'agent."""
     pass
 
+
+class MessageValidationError(Exception):
+    """Erreur de validation du message entrant."""
+    pass
+
+
+class _ParsedMessage(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    company_id: str = Field(min_length=1)
+    email: str = Field(min_length=1)
+    user_message: str = Field(min_length=1, validation_alias="message")
 
 class SimpleAgent:
     """
@@ -404,38 +418,70 @@ class SimpleAgent:
                     self._handle_message(messaging, msg)
                 )
 
+    async def _ensure_company_context(self, company_id: str | None) -> None:
+        """
+        Configure le contexte entreprise si le RAG est actif et un company_id est fourni.
+
+        Args:
+            company_id: ID de l'entreprise (None si pas de multi-tenant)
+        """
+        if self.enable_rag and company_id:
+            await self._setup_company_context(company_id)
+
+    async def _stream_response_to_user(
+        self, messaging: MessagingService, parsed: _ParsedMessage
+    ) -> None:
+        """
+        Execute le chat en streaming et publie les chunks vers l'utilisateur.
+
+        Args:
+            messaging: Service de messaging pour publier la reponse
+            parsed: Message parse et valide
+        """
+        async for chunk in self.chat(
+            parsed.user_message,
+            thread_id=parsed.email,
+            company_id=parsed.company_id,
+        ):
+            await messaging.publish_chunk(parsed.email, chunk)
+
+        await messaging.publish_chunk(parsed.email, "", done=True)
+
     async def _handle_message(self, messaging: MessagingService, msg: "Message"):
         """
         Traite un message et publie la reponse.
+
+        Pipeline:
+            1. Parse et validation du message
+            2. Configuration du contexte entreprise (si multi-tenant)
+            3. Streaming de la reponse vers l'utilisateur
 
         Args:
             messaging: Service de messaging pour publier la reponse
             msg: Message recu a traiter
         """
         try:
-            company_id = msg.data.get("company_id")  # Multi-tenant: ID entreprise
-            email = msg.data.get("email", "unknown")
-            user_message = msg.data.get("message", "")
+            parsed = _ParsedMessage(**msg.data)
+        except ValidationError as e:
+            logger.warning(f"Message invalide: {e}")
+            return
 
-            logger.info(f"Message de {email} (company: {company_id}): {user_message[:50]}...")
+        logger.info(
+            f"Message de {parsed.email} (company: {parsed.company_id}): "
+            f"{parsed.user_message[:50]}..."
+        )
 
-            # Configurer le contexte entreprise pour le RAG (filtrage + prompt personnalise)
-            if self.enable_rag and company_id:
-                await self._setup_company_context(company_id)
+        try:
+            await self._ensure_company_context(parsed.company_id)
+            await self._stream_response_to_user(messaging, parsed)
 
-            try:
-                async for chunk in self.chat(user_message, thread_id=email, company_id=company_id):
-                    await messaging.publish_chunk(email, chunk)
-                
-                await messaging.publish_chunk(email, "", done=True)
+        except (AgentError, OllamaConnectionError) as e:
+            logger.error(f"Erreur agent pour {parsed.email}: {e}")
+            await messaging.publish_error(parsed.email, str(e))
 
-            except Exception as e:
-                await messaging.publish_error(email, str(e))
-
-        except KeyError as e:
-            logger.error(f"Champ manquant dans le message: {e}")
         except Exception as e:
-            logger.error(f"Erreur inattendue: {e}")
+            logger.error(f"Erreur inattendue pour {parsed.email}: {e}", exc_info=True)
+            await messaging.publish_error(parsed.email, "Une erreur inattendue est survenue.")
 
     async def cleanup(self):
         """Nettoie les ressources."""
