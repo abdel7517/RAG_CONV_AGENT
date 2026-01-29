@@ -1,4 +1,4 @@
-# RAG Conversational Agent
+# RAG Conversational Agent Multi-tenant
 
 Agent conversationnel intelligent avec **RAG** (Retrieval Augmented Generation), interface web temps reel, et architecture microservices.
 
