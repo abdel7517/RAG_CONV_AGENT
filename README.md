@@ -193,7 +193,7 @@ HUGGINGFACE_EMBEDDING_MODEL=intfloat/multilingual-e5-large
 python main.py setup-db
 ```
 
-### 5. (Optionnel) Indexer des documents pour le RAG
+### 5. Indexer des documents pour le RAG
 
 Placez vos fichiers PDF dans le dossier `documents/` puis indexez-les avec un `company_id` :
 
