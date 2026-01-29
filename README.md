@@ -111,6 +111,11 @@ pip install -r requirements.txt
 ### 3. Configurer le LLM
 
 **Option A: 100% local (gratuit, donnees non partagees a des tiers)**
+
+Recommande pour ceux qui souhaitent conserver leurs donnees en local. Aucune information n'est envoyee a un service externe.
+
+> **Configuration minimale requise** : 16 Go de RAM, 10 Go d'espace disque libre. Un GPU est recommande mais pas obligatoire (le CPU fonctionne, mais plus lentement).
+
 ```bash
 # Installer Ollama depuis https://ollama.ai
 ollama pull qwen2.5:7b
@@ -123,20 +128,40 @@ EMBEDDING_PROVIDER=huggingface
 HUGGINGFACE_EMBEDDING_MODEL=intfloat/multilingual-e5-large
 ```
 
-> Les embeddings HuggingFace sont telecharges localement via `sentence-transformers`. Aucune donnee n'est envoyee a un service externe.
+> Les embeddings HuggingFace sont telecharges localement via `sentence-transformers`. Le modele LLM tourne via Ollama. Aucune donnee n'est envoyee a un service externe.
 
 **Option B: Mistral (cloud)**
+
+Pour ceux qui n'ont pas la configuration materielle necessaire pour l'option locale. Les requetes sont envoyees aux serveurs Mistral.
+
 ```bash
 # Dans .env
 LLM_PROVIDER=mistral
 MISTRAL_API_KEY=votre_cle_api
+
+# Optionnel: garder les embeddings en local (pas de partage de donnees pour l'indexation)
+EMBEDDING_PROVIDER=huggingface
+HUGGINGFACE_EMBEDDING_MODEL=intfloat/multilingual-e5-large
+
+# Ou utiliser les embeddings Mistral (cloud)
+# EMBEDDING_PROVIDER=mistral
 ```
 
 **Option C: OpenAI (cloud)**
+
+Pour ceux qui n'ont pas la configuration materielle necessaire pour l'option locale. Les requetes sont envoyees aux serveurs OpenAI.
+
 ```bash
 # Dans .env
 LLM_PROVIDER=openai
 OPENAI_API_KEY=votre_cle_api
+
+# Optionnel: garder les embeddings en local (pas de partage de donnees pour l'indexation)
+EMBEDDING_PROVIDER=huggingface
+HUGGINGFACE_EMBEDDING_MODEL=intfloat/multilingual-e5-large
+
+# Ou utiliser les embeddings OpenAI (cloud)
+# EMBEDDING_PROVIDER=openai
 ```
 
 ### 4. Initialiser la base de donnees
