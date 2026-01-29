@@ -23,7 +23,7 @@ from src.application.services.messaging_service import MessagingService
 from src.domain.ports.llm_port import LLMPort
 
 if TYPE_CHECKING:
-    from src.messaging import Message
+    from src.domain.ports.message_channel_port import Message
 
 logger = logging.getLogger(__name__)
 
@@ -196,7 +196,7 @@ class SimpleAgent:
             tone: Ton du chatbot
             company_id: ID pour le cache
         """
-        from src.tools.rag_tools import RAGAgentState
+        from src.application.rag_tools import RAGAgentState
 
         try:
             tools = [self.search_tool] if self.search_tool else []
@@ -260,7 +260,7 @@ class SimpleAgent:
             prompt = settings.SYSTEM_PROMPT  # Défaut: prompt statique
 
             if self.enable_rag:
-                from src.tools.rag_tools import RAGAgentState
+                from src.application.rag_tools import RAGAgentState
                 state_schema = RAGAgentState
                 prompt = settings.SYSTEM_PROMPT_RAG  # Prompt RAG statique
 

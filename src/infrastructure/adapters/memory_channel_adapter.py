@@ -1,5 +1,5 @@
 """
-Implementation In-Memory du canal de messaging.
+Adapter In-Memory du canal de messaging.
 
 Utile pour les tests unitaires et le developpement sans Redis.
 """
@@ -9,7 +9,7 @@ import fnmatch
 import logging
 from typing import AsyncIterator, Dict, Any, List
 
-from .base import Message, MessageChannel
+from src.domain.ports.message_channel_port import Message, MessageChannel
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +105,6 @@ class InMemoryMessageChannel(MessageChannel):
                 msg = await asyncio.wait_for(self._queue.get(), timeout=1.0)
                 yield msg
             except asyncio.TimeoutError:
-                # Permet de verifier periodiquement si on doit s'arreter
                 continue
             except asyncio.CancelledError:
                 break

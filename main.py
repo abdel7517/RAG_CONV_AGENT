@@ -28,14 +28,13 @@ logging.basicConfig(
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
-# Container DI global + wire pour @inject
 from src.infrastructure.container import Container
 from src.config import settings
 
 container = Container()
 container.config.llm_provider.from_value(settings.LLM_PROVIDER)
 container.config.channel_type.from_value(settings.CHANNEL_TYPE)
-container.wire(modules=["src.agents.simple_agent"])
+container.wire(modules=["src.application.simple_agent"])
 
 
 def print_error(message: str):
@@ -51,7 +50,7 @@ def print_success(message: str):
 def run_simple_agent(thread_id: str):
     """Lance l'agent simple avec gestion des erreurs."""
     try:
-        from src.agents import SimpleAgent
+        from src.application import SimpleAgent
         agent = SimpleAgent()
 
         async def run():
@@ -86,7 +85,7 @@ def run_simple_agent(thread_id: str):
 def run_rag_agent(thread_id: str):
     """Lance l'agent RAG avec gestion des erreurs."""
     try:
-        from src.agents import SimpleAgent
+        from src.application import SimpleAgent
         agent = SimpleAgent(enable_rag=True)
 
         async def run():
@@ -127,7 +126,7 @@ def run_serve_agent(enable_rag: bool = False):
     Le type de canal (redis/memory) est configuré via container.config.channel_type.
     """
     try:
-        from src.agents import SimpleAgent
+        from src.application import SimpleAgent
 
         agent = SimpleAgent(enable_rag=enable_rag)
         agent_type = "RAG" if enable_rag else "Simple"
@@ -157,7 +156,10 @@ def run_serve_agent(enable_rag: bool = False):
         sys.exit(1)
 
 
-def run_index_documents(documents_path: str = None, company_id: str = None):
+def run_index_documents(
+    documents_path: str = None,
+    company_id: str = None,
+):
     """
     Indexe les documents PDF dans le vector store.
 
@@ -166,9 +168,6 @@ def run_index_documents(documents_path: str = None, company_id: str = None):
         company_id: ID de l'entreprise pour le filtrage multi-tenant
     """
     try:
-        from src.retrieval import DocumentLoader, VectorStore
-        from src.config import settings
-
         path = documents_path or settings.DOCUMENTS_PATH
         print(f"Indexation des documents depuis: {path}")
         print(f"Collection PGVector: {settings.PGVECTOR_COLLECTION_NAME}")
@@ -177,8 +176,8 @@ def run_index_documents(documents_path: str = None, company_id: str = None):
             print(f"Company ID: {company_id}")
         print()
 
-        # Charger et decouper les documents
-        loader = DocumentLoader(documents_path=path)
+        # Charger et decouper les documents (Factory DI avec param dynamique)
+        loader = container.document_loader(documents_path=path)
         chunks = loader.load_and_split(company_id=company_id)
 
         if not chunks:
@@ -188,10 +187,9 @@ def run_index_documents(documents_path: str = None, company_id: str = None):
 
         print(f"Documents charges: {len(chunks)} chunks")
 
-        # Indexer dans le vector store
-        vector_store = VectorStore()
-
+        # Indexer dans le vector store (resolu via le container DI)
         async def index():
+            vector_store = container.vector_store()
             await vector_store.create_from_documents(chunks)
 
         asyncio.run(index())

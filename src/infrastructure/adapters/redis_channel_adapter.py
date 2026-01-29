@@ -1,5 +1,5 @@
 """
-Implementation Redis du canal de messaging.
+Adapter Redis du canal de messaging.
 
 Utilise redis.asyncio pour une communication Pub/Sub asynchrone.
 """
@@ -10,7 +10,7 @@ from typing import AsyncIterator, Dict, Any, Optional
 
 import redis.asyncio as redis
 
-from .base import Message, MessageChannel
+from src.domain.ports.message_channel_port import Message, MessageChannel
 
 logger = logging.getLogger(__name__)
 

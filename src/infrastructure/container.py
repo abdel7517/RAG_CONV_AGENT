@@ -15,14 +15,15 @@ from dependency_injector import containers, providers
 
 from src.config import settings
 from src.infrastructure.adapters.pgvector_adapter import PGVectorAdapter
-from src.infrastructure.adapters.langchain_retriever_adapter import LangChainRetrieverAdapter
 from src.infrastructure.adapters.ollama_adapter import OllamaAdapter
 from src.infrastructure.adapters.mistral_adapter import MistralAdapter
 from src.infrastructure.adapters.openai_adapter import OpenAIAdapter
-from src.messaging import RedisMessageChannel, InMemoryMessageChannel
+from src.infrastructure.adapters.redis_channel_adapter import RedisMessageChannel
+from src.infrastructure.adapters.memory_channel_adapter import InMemoryMessageChannel
+from src.infrastructure.adapters.document_loader_adapter import PDFDocumentLoaderAdapter
 from src.application.services.rag_service import RAGService
 from src.application.services.messaging_service import MessagingService
-from src.tools.rag_tools import create_search_tool
+from src.application.rag_tools import create_search_tool
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ class Container(containers.DeclarativeContainer):
 
     # Configuration du wiring automatique
     wiring_config = containers.WiringConfiguration(
-        modules=["src.agents.simple_agent"]
+        modules=["src.application.simple_agent"]
     )
 
     # =========================================================================
@@ -91,19 +92,16 @@ class Container(containers.DeclarativeContainer):
     # VECTOR STORE ADAPTERS
     # =========================================================================
 
+    document_loader = providers.Factory(PDFDocumentLoaderAdapter)
+    """
+    Factory DocumentLoader.
+    Factory (pas Singleton) car documents_path peut varier selon l'appel CLI.
+    """
+
     vector_store = providers.Singleton(PGVectorAdapter)
     """
     Adapter PGVector (Singleton).
     Une seule connexion au vector store partagée.
-    """
-
-    retriever = providers.Singleton(
-        LangChainRetrieverAdapter,
-        vector_store=vector_store
-    )
-    """
-    Adapter Retriever (Singleton).
-    Dépend du vector_store qui est injecté automatiquement.
     """
 
     # =========================================================================
@@ -112,7 +110,7 @@ class Container(containers.DeclarativeContainer):
 
     rag_service = providers.Singleton(
         RAGService,
-        retriever=retriever
+        retriever=vector_store
     )
     """
     Service RAG (Singleton).
@@ -135,8 +133,7 @@ class Container(containers.DeclarativeContainer):
     Graphe de dépendances:
         search_tool
             └── rag_service
-                    └── retriever
-                            └── vector_store
+                    └── vector_store (PGVectorAdapter)
     """
 
     # =========================================================================

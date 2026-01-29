@@ -17,7 +17,7 @@ class RetrieverPort(ABC):
     et ajoute la logique de formatage et d'orchestration.
 
     Implémentations possibles:
-    - LangChainRetrieverAdapter
+    - PGVectorAdapter (implémente aussi VectorStorePort)
     - MockRetriever (pour les tests)
     """
 

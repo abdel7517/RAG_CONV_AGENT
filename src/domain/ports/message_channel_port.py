@@ -1,8 +1,8 @@
 """
-Classes abstraites pour les canaux de messaging.
+Port (Interface) pour les canaux de messaging.
 
-Ce module definit l'interface commune que toutes les implementations
-de canaux doivent respecter.
+Ce port definit le contrat que toutes les implementations
+de canaux doivent respecter (Redis, In-Memory, Kafka, etc.).
 """
 
 from abc import ABC, abstractmethod
@@ -29,8 +29,9 @@ class MessageChannel(ABC):
     """
     Interface abstraite pour un canal de messages.
 
-    Cette classe definit le contrat que toutes les implementations
-    de canaux doivent respecter (Redis, In-Memory, Kafka, etc.).
+    Implementations possibles:
+    - RedisMessageChannel (Redis Pub/Sub)
+    - InMemoryMessageChannel (asyncio.Queue, pour tests/dev)
     """
 
     @abstractmethod

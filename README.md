@@ -49,48 +49,71 @@ Agent conversationnel intelligent avec **RAG** (Retrieval Augmented Generation),
 | **Database** | PostgreSQL (memoire + vectors), Redis (messaging) |
 | **Infra** | Docker Compose |
 
-## Structure du projet
+## Structure du projet (Clean Architecture)
 
 ```
 RAG_CONV_AGENT/
-├── src/                          # Agents LangChain
-│   ├── agents/
-│   │   └── simple_agent.py       # Agent conversationnel (enable_rag option)
-│   ├── retrieval/                # Module RAG
-│   │   ├── document_loader.py    # Chargement et split des PDFs
-│   │   ├── vector_store.py       # pgvector (PostgreSQL)
-│   │   └── retriever.py          # Recherche semantique
-│   ├── tools/
-│   │   └── rag_tools.py          # Tool search_documents pour l'agent
-│   ├── messaging/                # Abstraction canaux de messages
-│   │   ├── base.py               # Interface MessageChannel
-│   │   ├── redis_channel.py      # Implementation Redis
-│   │   ├── memory_channel.py     # Implementation In-Memory
-│   │   └── factory.py            # Factory create_channel()
+├── src/
+│   ├── domain/                          # Couche Domain (ports/interfaces)
+│   │   └── ports/
+│   │       ├── vector_store_port.py     # Interface VectorStore
+│   │       ├── retriever_port.py        # Interface Retriever
+│   │       ├── document_loader_port.py  # Interface DocumentLoader
+│   │       ├── message_channel_port.py  # Interface MessageChannel + Message
+│   │       └── llm_port.py             # Interface LLM
+│   │
+│   ├── application/                     # Couche Application (orchestration)
+│   │   ├── simple_agent.py              # Agent conversationnel (enable_rag option)
+│   │   ├── rag_tools.py                 # Tool search_documents + RAGAgentState
+│   │   └── services/
+│   │       ├── rag_service.py           # Service RAG (recherche + formatage)
+│   │       └── messaging_service.py     # Service messaging (publish/listen)
+│   │
+│   ├── infrastructure/                  # Couche Infrastructure (implementations)
+│   │   ├── adapters/
+│   │   │   ├── pgvector_adapter.py      # PGVector (VectorStorePort + RetrieverPort)
+│   │   │   ├── document_loader_adapter.py # PDF loader (DocumentLoaderPort)
+│   │   │   ├── redis_channel_adapter.py   # Redis Pub/Sub (MessageChannel)
+│   │   │   ├── memory_channel_adapter.py  # In-Memory (MessageChannel)
+│   │   │   ├── ollama_adapter.py        # Ollama LLM (LLMPort)
+│   │   │   ├── mistral_adapter.py       # Mistral LLM (LLMPort)
+│   │   │   └── openai_adapter.py        # OpenAI LLM (LLMPort)
+│   │   └── container.py                 # Container DI (dependency-injector)
+│   │
 │   ├── config/
-│   │   └── settings.py           # Configuration centralisee
+│   │   └── settings.py                  # Configuration centralisee
+│   ├── models/
+│   │   └── company.py                   # Modele Company (multi-tenant)
+│   ├── repositories/
+│   │   └── company_repository.py        # Repository Company (PostgreSQL)
 │   └── utils/
-│       └── db_setup.py           # Setup PostgreSQL
+│       └── db_setup.py                  # Setup PostgreSQL
 │
-├── backend/                      # API FastAPI
-│   ├── main.py                   # Application FastAPI
-│   ├── dependencies.py           # Broadcaster Redis
+├── backend/                             # API FastAPI
+│   ├── main.py                          # Application FastAPI
+│   ├── dependencies.py                  # Broadcaster Redis
 │   └── routes/
-│       ├── chat.py               # POST /chat
-│       └── stream.py             # GET /stream/{email} (SSE)
+│       ├── chat.py                      # POST /chat
+│       └── stream.py                    # GET /stream/{email} (SSE)
 │
-├── frontend/                     # Interface React
+├── frontend/                            # Interface React
 │   ├── src/
-│   │   ├── App.jsx               # Composant principal
-│   │   ├── components/           # Composants UI (ChatWidget, etc.)
-│   │   └── hooks/                # Custom hooks (SSE)
+│   │   ├── App.jsx                      # Composant principal
+│   │   ├── components/                  # Composants UI (ChatWidget, etc.)
+│   │   └── hooks/                       # Custom hooks (SSE)
 │   └── package.json
 │
-├── documents/                    # Documents PDF pour RAG
-├── docker-compose.yml            # PostgreSQL + Redis
-├── main.py                       # CLI agents
+├── documents/                           # Documents PDF pour RAG
+├── docker-compose.yml                   # PostgreSQL + Redis
+├── main.py                              # CLI agents
 └── requirements.txt
 ```
+
+### Principes architecturaux
+
+- **Ports & Adapters (Hexagonal)** : Les ports (`domain/ports/`) definissent les interfaces. Les adapters (`infrastructure/adapters/`) les implementent.
+- **Dependency Injection** : Le container DI (`dependency-injector`) gere le wiring. Les services dependent des ports, pas des implementations.
+- **Inversion de dependance** : La couche application ne connait que les abstractions. Changer de provider (ex: PGVector → Pinecone) = changer un adapter sans toucher aux services.
 
 ## Quick Start
 

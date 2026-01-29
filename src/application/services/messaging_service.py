@@ -8,7 +8,7 @@ pour que l'appelant puisse simplement publish/listen sans se soucier de la confi
 import logging
 from typing import AsyncIterator
 
-from src.messaging import MessageChannel, Message
+from src.domain.ports.message_channel_port import MessageChannel, Message
 
 logger = logging.getLogger(__name__)
 
