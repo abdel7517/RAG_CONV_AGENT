@@ -88,12 +88,20 @@ RAG_CONV_AGENT/
 │   └── config/
 │       └── settings.py                  # Configuration centralisee
 │
-├── backend/                             # API FastAPI
-│   ├── main.py                          # Application FastAPI
-│   ├── dependencies.py                  # Broadcaster Redis
+├── backend/                             # API FastAPI (Hexagonal)
+│   ├── main.py                          # Application FastAPI + Container DI
+│   ├── domain/
+│   │   ├── models/
+│   │   │   └── chat.py                  # ChatRequest, ChatResponse
+│   │   └── ports/
+│   │       └── event_broker_port.py     # Interface EventBroker (pub/sub)
+│   ├── infrastructure/
+│   │   ├── container.py                 # Container DI (dependency-injector)
+│   │   └── adapters/
+│   │       └── broadcast_adapter.py     # Redis Broadcast (EventBrokerPort)
 │   └── routes/
-│       ├── chat.py                      # POST /chat
-│       └── stream.py                    # GET /stream/{email} (SSE)
+│       ├── chat.py                      # POST /chat (@inject)
+│       └── stream.py                    # GET /stream/{email} SSE (@inject)
 │
 ├── frontend/                            # Interface React
 │   ├── src/
