@@ -287,6 +287,63 @@ class SimpleAgent:
         mode = "RAG" if self.enable_rag else "Simple"
         logger.info(f"Agent initialise en mode {mode}")
 
+    def _enrich_with_rag(self, user_input: str, company_id: str = None) -> str | None:
+        """
+        Enrichit le message avec le contexte RAG si active.
+
+        Returns:
+            Le message enrichi, le message original (si RAG desactive),
+            ou None si aucun document trouve.
+        """
+        if not self.enable_rag or not self.rag_service:
+            return user_input
+
+        logger.debug(f"RAG: Recherche pour: {user_input[:50]}...")
+        rag_context = self.rag_service.search_formatted(user_input, company_id=company_id)
+
+        if not rag_context:
+            logger.info(f"RAG: Aucun document pour company_id={company_id}")
+            return None
+
+        logger.debug(f"RAG: {len(rag_context)} chars de contexte")
+        return f"CONTEXTE DOCUMENTAIRE:\n{rag_context}\n\n---\nQUESTION: {user_input}"
+
+    def _build_input_state(self, message: str, company_id: str = None) -> dict:
+        """Construit le state d'entree pour l'agent."""
+        state = {"messages": [HumanMessage(content=message)]}
+        if company_id:
+            state["company_id"] = company_id
+        return state
+
+    async def _stream_response(self, input_state: dict, config: dict, company_id: str = None):
+        """
+        Stream la reponse de l'agent avec gestion d'erreurs.
+
+        Yields:
+            str: Tokens de la reponse
+        """
+        provider_name = self.llm_adapter.provider_name if self.llm_adapter else "unknown"
+        current_agent = self._get_current_agent(company_id)
+
+        try:
+            async for chunk, _ in current_agent.astream(
+                input_state, config=config, stream_mode="messages"
+            ):
+                if chunk.content:
+                    yield chunk.content
+        except httpx.ConnectError:
+            if provider_name == "ollama":
+                raise OllamaConnectionError(
+                    "Connexion a Ollama perdue. Verifiez qu'Ollama est toujours en cours d'execution."
+                )
+            raise AgentError("Connexion au serveur LLM perdue.")
+        except httpx.TimeoutException:
+            raise AgentError(
+                "Timeout lors de la communication avec le LLM. Le modele met peut-etre trop de temps a repondre."
+            )
+        except Exception as e:
+            raise AgentError(f"Erreur lors de la generation de la reponse: {e}")
+
     async def chat(self, user_input: str, thread_id: str = "conversation-1", company_id: str = None):
         """
         Envoie un message et stream la reponse.
@@ -302,77 +359,21 @@ class SimpleAgent:
         Raises:
             AgentError: Si l'agent n'est pas initialise ou si une erreur survient
         """
-        logger.debug(f"chat() appelee - user_input: {user_input[:100]}..., thread_id: {thread_id}, company_id: {company_id}")
-
         if not self._initialized:
-            logger.debug("Agent non initialise - levee d'exception")
             raise AgentError("L'agent n'est pas initialise. Appelez initialize() d'abord.")
 
-        # ========== RAG Direct: Recherche systematique AVANT l'appel LLM ==========
-        if self.enable_rag and self.rag_service:
-            logger.debug(f"RAG Direct: Recherche dans la DB pour: {user_input[:50]}...")
-            rag_context = self.rag_service.search_formatted(user_input, company_id=company_id)
+        message = self._enrich_with_rag(user_input, company_id)
+        if message is None:
+            yield "Je n'ai pas cette information dans notre documentation."
+            return
 
-            if not rag_context:
-                # Aucun document trouve -> reponse directe (pas d'appel LLM)
-                logger.info(f"RAG Direct: Aucun document trouve pour company_id={company_id}")
-                yield "Je n'ai pas cette information dans notre documentation."
-                return
-
-            logger.debug(f"RAG Direct: {len(rag_context)} caracteres de contexte recuperes")
-
-            # Injecter le contexte dans le message utilisateur
-            user_input = f"CONTEXTE DOCUMENTAIRE:\n{rag_context}\n\n---\nQUESTION: {user_input}"
-        # ==========================================================================
-
+        input_state = self._build_input_state(message, company_id)
         config = {"configurable": {"thread_id": thread_id}}
-        logger.debug(f"Configuration agent: {config}")
-        provider_name = self.llm_adapter.provider_name if self.llm_adapter else "unknown"
-        logger.debug(f"Demarrage du streaming avec le LLM provider: {provider_name}")
 
-        # Preparer l'etat (contexte deja injecte dans user_input)
-        input_state = {"messages": [HumanMessage(content=user_input)]}
-        if company_id:
-            input_state["company_id"] = company_id
+        logger.debug(f"chat({user_input[:50]}...) -> thread={thread_id}, company={company_id}")
 
-        # ========== DEBUG: Afficher ce qui est envoye au LLM ==========
-        logger.debug("=" * 60)
-        logger.debug("ENVOI AU LLM - DEBUG")
-        logger.debug(f"Message ({len(user_input)} chars): {user_input[:500]}...")
-        logger.debug(f"Company ID: {company_id}")
-        logger.debug("=" * 60)
-        # ==============================================================
-
-        try:
-            # Utiliser l'agent personnalise si disponible (multi-tenant)
-            current_agent = self._get_current_agent(company_id)
-            logger.debug("Appel de agent.astream()...")
-            async for message_chunk, _ in current_agent.astream(
-                input_state,
-                config=config,
-                stream_mode="messages"
-            ):
-                logger.debug(f"Chunk recu - type: {type(message_chunk).__name__}, a du contenu: {bool(message_chunk.content)}")
-                if message_chunk.content:
-                    yield message_chunk.content
-            logger.debug("Streaming termine avec succes")
-        except httpx.ConnectError as e:
-            logger.debug(f"ConnectError: {e}", exc_info=True)
-            provider_name = self.llm_adapter.provider_name if self.llm_adapter else "unknown"
-            if provider_name == "ollama":
-                raise OllamaConnectionError(
-                    "Connexion a Ollama perdue. Verifiez qu'Ollama est toujours en cours d'execution."
-                )
-            else:
-                raise AgentError("Connexion au serveur LLM perdue.")
-        except httpx.TimeoutException as e:
-            logger.debug(f"TimeoutException: {e}", exc_info=True)
-            raise AgentError(
-                "Timeout lors de la communication avec le LLM. Le modele met peut-etre trop de temps a repondre."
-            )
-        except Exception as e:
-            logger.debug(f"Exception inattendue - {type(e).__name__}: {e}", exc_info=True)
-            raise AgentError(f"Erreur lors de la generation de la reponse: {e}")
+        async for chunk in self._stream_response(input_state, config, company_id):
+            yield chunk
 
     @inject
     async def serve(
