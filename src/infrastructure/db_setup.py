@@ -28,6 +28,7 @@ def _create_companies_table() -> None:
         company_id VARCHAR(255) PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
         tone VARCHAR(255) DEFAULT 'professionnel et courtois',
+        plan VARCHAR(50) DEFAULT 'free',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     """
@@ -50,6 +51,7 @@ def _create_documents_table() -> None:
         filename VARCHAR(500) NOT NULL,
         gcs_path VARCHAR(1000) NOT NULL,
         size_bytes BIGINT NOT NULL,
+        num_pages INTEGER DEFAULT 0,
         content_type VARCHAR(100) DEFAULT 'application/pdf',
         is_vectorized BOOLEAN DEFAULT FALSE,
         uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

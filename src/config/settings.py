@@ -125,6 +125,7 @@ CE QUI SUIT APRES NE DOIT PAS ETRE INCLUS DANS LE PROMPT SYSTEME MAIS DANS CHAQU
     GCS_PROJECT_ID: str = os.getenv("GCS_PROJECT_ID", "")
     GCS_SERVICE_ACCOUNT_KEY: str = os.getenv("GCS_SERVICE_ACCOUNT_KEY", "")
     MAX_UPLOAD_SIZE_BYTES: int = int(os.getenv("MAX_UPLOAD_SIZE_BYTES", str(10 * 1024 * 1024)))
+    MAX_PAGES_PER_COMPANY: int = int(os.getenv("MAX_PAGES_PER_COMPANY", "5"))
 
     # === CONFIGURATION MESSAGING ===
     CHANNEL_TYPE: str = os.getenv("CHANNEL_TYPE", "redis")  # "redis" ou "memory"

@@ -161,7 +161,12 @@ export function DocumentsPage() {
                 <FileText className="h-5 w-5" />
                 Documents
               </span>
-              <Badge variant="secondary">{documents.length} fichier(s)</Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary">{documents.length} fichier(s)</Badge>
+                <Badge variant="outline">
+                  {documents.reduce((sum, d) => sum + (d.num_pages || 0), 0)} / 5 pages
+                </Badge>
+              </div>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -191,6 +196,7 @@ export function DocumentsPage() {
                         </div>
                         <p className="text-sm text-muted-foreground">
                           {formatFileSize(doc.size_bytes)}
+                          {doc.num_pages > 0 && <> &middot; {doc.num_pages} page(s)</>}
                           {doc.uploaded_at && (
                             <> &middot; {new Date(doc.uploaded_at).toLocaleDateString('fr-FR')}</>
                           )}

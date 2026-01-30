@@ -12,6 +12,7 @@ from dependency_injector import containers, providers
 from src.config import settings
 from backend.infrastructure.adapters.broadcast_adapter import BroadcastEventBroker
 from backend.infrastructure.adapters.gcs_storage_adapter import GCSFileStorageAdapter
+from backend.infrastructure.adapters.pypdf_analyzer_adapter import PypdfAnalyzerAdapter
 from backend.infrastructure.repositories.document_repository import PostgresDocumentRepository
 
 
@@ -65,3 +66,8 @@ class Container(containers.DeclarativeContainer):
         PostgresDocumentRepository,
     )
     """Repository metadonnees documents (Singleton)."""
+
+    pdf_analyzer = providers.Singleton(
+        PypdfAnalyzerAdapter,
+    )
+    """Analyseur PDF pour le comptage de pages (Singleton)."""

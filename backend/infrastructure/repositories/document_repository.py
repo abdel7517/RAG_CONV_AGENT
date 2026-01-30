@@ -27,8 +27,9 @@ class PostgresDocumentRepository(DocumentRepositoryPort):
                     """
                     INSERT INTO documents (
                         document_id, company_id, filename,
-                        gcs_path, size_bytes, content_type, is_vectorized
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        gcs_path, size_bytes, num_pages,
+                        content_type, is_vectorized
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         document.document_id,
@@ -36,6 +37,7 @@ class PostgresDocumentRepository(DocumentRepositoryPort):
                         document.filename,
                         document.gcs_path,
                         document.size_bytes,
+                        document.num_pages,
                         document.content_type,
                         document.is_vectorized,
                     ),
@@ -57,8 +59,8 @@ class PostgresDocumentRepository(DocumentRepositoryPort):
                 await cur.execute(
                     """
                     SELECT document_id, company_id, filename,
-                           gcs_path, size_bytes, content_type,
-                           is_vectorized, uploaded_at
+                           gcs_path, size_bytes, num_pages,
+                           content_type, is_vectorized, uploaded_at
                     FROM documents
                     WHERE document_id = %s AND company_id = %s
                     """,
@@ -73,9 +75,10 @@ class PostgresDocumentRepository(DocumentRepositoryPort):
                         filename=row[2],
                         gcs_path=row[3],
                         size_bytes=row[4],
-                        content_type=row[5],
-                        is_vectorized=row[6],
-                        uploaded_at=row[7],
+                        num_pages=row[5],
+                        content_type=row[6],
+                        is_vectorized=row[7],
+                        uploaded_at=row[8],
                     )
                 return None
 
@@ -87,8 +90,8 @@ class PostgresDocumentRepository(DocumentRepositoryPort):
                 await cur.execute(
                     """
                     SELECT document_id, company_id, filename,
-                           gcs_path, size_bytes, content_type,
-                           is_vectorized, uploaded_at
+                           gcs_path, size_bytes, num_pages,
+                           content_type, is_vectorized, uploaded_at
                     FROM documents
                     WHERE company_id = %s
                     ORDER BY uploaded_at DESC
@@ -104,12 +107,25 @@ class PostgresDocumentRepository(DocumentRepositoryPort):
                         filename=r[2],
                         gcs_path=r[3],
                         size_bytes=r[4],
-                        content_type=r[5],
-                        is_vectorized=r[6],
-                        uploaded_at=r[7],
+                        num_pages=r[5],
+                        content_type=r[6],
+                        is_vectorized=r[7],
+                        uploaded_at=r[8],
                     )
                     for r in rows
                 ]
+
+    async def get_total_pages(self, company_id: str) -> int:
+        async with await psycopg.AsyncConnection.connect(
+            settings.get_postgres_uri()
+        ) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT COALESCE(SUM(num_pages), 0) FROM documents WHERE company_id = %s",
+                    (company_id,),
+                )
+                row = await cur.fetchone()
+                return row[0] if row else 0
 
     async def delete(self, document_id: str, company_id: str) -> bool:
         async with await psycopg.AsyncConnection.connect(

@@ -36,3 +36,8 @@ class DocumentRepositoryPort(ABC):
     async def delete(self, document_id: str, company_id: str) -> bool:
         """Supprime les metadonnees d'un document. Returns True si supprime."""
         ...
+
+    @abstractmethod
+    async def get_total_pages(self, company_id: str) -> int:
+        """Retourne le nombre total de pages PDF pour une entreprise."""
+        ...

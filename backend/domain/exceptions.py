@@ -26,3 +26,16 @@ class FileTooLargeError(Exception):
         self.size = size
         self.max_size = max_size
         super().__init__(f"Fichier trop volumineux ({size} bytes). Max: {max_size} bytes")
+
+
+class PageLimitExceededError(Exception):
+    """Le nombre de pages PDF depasse la limite autorisee."""
+
+    def __init__(self, current_pages: int, new_pages: int, max_pages: int):
+        self.current_pages = current_pages
+        self.new_pages = new_pages
+        self.max_pages = max_pages
+        super().__init__(
+            f"Limite de pages depassee: {current_pages} existantes + {new_pages} nouvelles "
+            f"= {current_pages + new_pages} pages (max: {max_pages})"
+        )

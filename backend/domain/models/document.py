@@ -27,6 +27,7 @@ class Document:
     company_id: str
     filename: str
     size_bytes: int
+    num_pages: int = 0
     content_type: str = "application/pdf"
     gcs_path: Optional[str] = None
     is_vectorized: bool = False
@@ -42,6 +43,7 @@ class Document:
         size_bytes: int,
         content_type: str,
         max_upload_size_bytes: int,
+        num_pages: int = 0,
     ) -> "Document":
         """
         Factory method: valide les inputs et cree un nouveau Document.
@@ -60,6 +62,7 @@ class Document:
             company_id=company_id,
             filename=filename,
             size_bytes=size_bytes,
+            num_pages=num_pages,
             content_type=content_type,
         )
 
@@ -87,6 +90,7 @@ class DocumentResponse(BaseModel):
     company_id: str
     filename: str
     size_bytes: int
+    num_pages: int
     content_type: str
     is_vectorized: bool
     uploaded_at: str

@@ -8,7 +8,7 @@ from typing import Optional
 import psycopg
 
 from src.config import settings
-from src.domain.models.company import Company
+from src.domain.models.company import Company, CompanyPlan
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ class CompanyRepository:
         ) as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
-                    "SELECT company_id, name, tone FROM companies WHERE company_id = %s",
+                    "SELECT company_id, name, tone, plan FROM companies WHERE company_id = %s",
                     (company_id,)
                 )
                 row = await cur.fetchone()
@@ -44,7 +44,8 @@ class CompanyRepository:
                     return Company(
                         company_id=row[0],
                         name=row[1],
-                        tone=row[2]
+                        tone=row[2],
+                        plan=CompanyPlan(row[3]) if row[3] else CompanyPlan.FREE,
                     )
                 return None
 
@@ -61,13 +62,14 @@ class CompanyRepository:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    INSERT INTO companies (company_id, name, tone)
-                    VALUES (%s, %s, %s)
+                    INSERT INTO companies (company_id, name, tone, plan)
+                    VALUES (%s, %s, %s, %s)
                     ON CONFLICT (company_id) DO UPDATE SET
                         name = EXCLUDED.name,
-                        tone = EXCLUDED.tone
+                        tone = EXCLUDED.tone,
+                        plan = EXCLUDED.plan
                     """,
-                    (company.company_id, company.name, company.tone)
+                    (company.company_id, company.name, company.tone, company.plan.value)
                 )
             await conn.commit()
 
@@ -85,12 +87,17 @@ class CompanyRepository:
         ) as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
-                    "SELECT company_id, name, tone FROM companies ORDER BY name"
+                    "SELECT company_id, name, tone, plan FROM companies ORDER BY name"
                 )
                 rows = await cur.fetchall()
 
                 return [
-                    Company(company_id=row[0], name=row[1], tone=row[2])
+                    Company(
+                        company_id=row[0],
+                        name=row[1],
+                        tone=row[2],
+                        plan=CompanyPlan(row[3]) if row[3] else CompanyPlan.FREE,
+                    )
                     for row in rows
                 ]
 

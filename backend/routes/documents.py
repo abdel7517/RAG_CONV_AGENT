@@ -12,6 +12,7 @@ from backend.domain.exceptions import (
     DocumentNotFoundError,
     InvalidFileTypeError,
     FileTooLargeError,
+    PageLimitExceededError,
 )
 from backend.domain.models.document import (
     DocumentResponse,
@@ -21,6 +22,7 @@ from backend.domain.models.document import (
 )
 from backend.domain.ports.file_storage_port import FileStoragePort
 from backend.domain.ports.document_repository_port import DocumentRepositoryPort
+from backend.domain.ports.pdf_analyzer_port import PdfAnalyzerPort
 from backend.infrastructure.container import Container
 
 logger = logging.getLogger(__name__)
@@ -35,12 +37,13 @@ async def upload_document(
     file: UploadFile = File(...),
     storage: FileStoragePort = Depends(Provide[Container.file_storage]),
     repo: DocumentRepositoryPort = Depends(Provide[Container.document_repository]),
+    pdf_analyzer: PdfAnalyzerPort = Depends(Provide[Container.pdf_analyzer]),
 ):
     """Upload un document PDF pour une entreprise."""
     if not company_id.strip():
         raise HTTPException(status_code=400, detail="company_id est obligatoire")
 
-    uc = UploadDocumentUseCase(storage, repo)
+    uc = UploadDocumentUseCase(storage, repo, pdf_analyzer)
     try:
         document = await uc.execute(
             company_id=company_id,
@@ -52,6 +55,8 @@ async def upload_document(
         raise HTTPException(status_code=400, detail=str(e))
     except FileTooLargeError as e:
         raise HTTPException(status_code=413, detail=str(e))
+    except PageLimitExceededError as e:
+        raise HTTPException(status_code=409, detail=str(e))
 
     return DocumentUploadResponse(
         status="uploaded",
@@ -80,6 +85,7 @@ async def list_documents(
                 company_id=d.company_id,
                 filename=d.filename,
                 size_bytes=d.size_bytes,
+                num_pages=d.num_pages,
                 content_type=d.content_type,
                 is_vectorized=d.is_vectorized,
                 uploaded_at=d.uploaded_at.isoformat() if d.uploaded_at else "",
