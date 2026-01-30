@@ -11,6 +11,8 @@ from dependency_injector import containers, providers
 
 from src.config import settings
 from backend.infrastructure.adapters.broadcast_adapter import BroadcastEventBroker
+from backend.infrastructure.adapters.gcs_storage_adapter import GCSFileStorageAdapter
+from backend.infrastructure.repositories.document_repository import PostgresDocumentRepository
 
 
 class Container(containers.DeclarativeContainer):
@@ -27,7 +29,11 @@ class Container(containers.DeclarativeContainer):
     """
 
     wiring_config = containers.WiringConfiguration(
-        modules=["backend.routes.chat", "backend.routes.stream"]
+        modules=[
+            "backend.routes.chat",
+            "backend.routes.stream",
+            "backend.routes.documents",
+        ]
     )
 
     # =========================================================================
@@ -42,3 +48,20 @@ class Container(containers.DeclarativeContainer):
     Broker d'evenements (Singleton).
     Une seule connexion Redis partagee par toute l'application.
     """
+
+    # =========================================================================
+    # DOCUMENT MANAGEMENT
+    # =========================================================================
+
+    file_storage = providers.Singleton(
+        GCSFileStorageAdapter,
+        bucket_name=settings.GCS_BUCKET_NAME,
+        project_id=settings.GCS_PROJECT_ID,
+        service_account_key=settings.GCS_SERVICE_ACCOUNT_KEY,
+    )
+    """Stockage GCS (Singleton). Une seule connexion au bucket."""
+
+    document_repository = providers.Singleton(
+        PostgresDocumentRepository,
+    )
+    """Repository metadonnees documents (Singleton)."""

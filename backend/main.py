@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .infrastructure.container import Container
-from .routes import chat_router, stream_router
+from .routes import chat_router, stream_router, documents_router
 
 container = Container()
 
@@ -41,6 +41,7 @@ app.add_middleware(
 
 app.include_router(chat_router, prefix="/api", tags=["chat"])
 app.include_router(stream_router, prefix="/api", tags=["stream"])
+app.include_router(documents_router, prefix="/api", tags=["documents"])
 
 
 @app.get("/health")

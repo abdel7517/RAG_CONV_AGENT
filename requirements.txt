@@ -28,3 +28,7 @@ pydantic[email]>=2.0.0
 
 # Dependency Injection
 dependency-injector>=4.40.0
+
+# Google Cloud Storage
+google-cloud-storage>=2.14.0
+python-multipart>=0.0.6

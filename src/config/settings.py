@@ -120,6 +120,12 @@ CE QUI SUIT APRES NE DOIT PAS ETRE INCLUS DANS LE PROMPT SYSTEME MAIS DANS CHAQU
     RETRIEVER_K: int = int(os.getenv("RETRIEVER_K", "3"))
     PGVECTOR_COLLECTION_NAME: str = os.getenv("PGVECTOR_COLLECTION_NAME", "documents")
 
+    # === CONFIGURATION GOOGLE CLOUD STORAGE ===
+    GCS_BUCKET_NAME: str = os.getenv("GCS_BUCKET_NAME", "")
+    GCS_PROJECT_ID: str = os.getenv("GCS_PROJECT_ID", "")
+    GCS_SERVICE_ACCOUNT_KEY: str = os.getenv("GCS_SERVICE_ACCOUNT_KEY", "")
+    MAX_UPLOAD_SIZE_BYTES: int = int(os.getenv("MAX_UPLOAD_SIZE_BYTES", str(10 * 1024 * 1024)))
+
     # === CONFIGURATION MESSAGING ===
     CHANNEL_TYPE: str = os.getenv("CHANNEL_TYPE", "redis")  # "redis" ou "memory"
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379")

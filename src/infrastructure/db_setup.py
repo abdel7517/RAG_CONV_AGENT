@@ -38,6 +38,32 @@ def _create_companies_table() -> None:
         conn.commit()
 
 
+def _create_documents_table() -> None:
+    """
+    Cree la table documents pour stocker les metadonnees des fichiers PDF.
+    Multi-tenant via company_id.
+    """
+    create_table_sql = """
+    CREATE TABLE IF NOT EXISTS documents (
+        document_id VARCHAR(255) PRIMARY KEY,
+        company_id VARCHAR(255) NOT NULL,
+        filename VARCHAR(500) NOT NULL,
+        gcs_path VARCHAR(1000) NOT NULL,
+        size_bytes BIGINT NOT NULL,
+        content_type VARCHAR(100) DEFAULT 'application/pdf',
+        is_vectorized BOOLEAN DEFAULT FALSE,
+        uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_documents_company_id
+        ON documents(company_id);
+    """
+
+    with psycopg.connect(settings.get_postgres_uri()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(create_table_sql)
+        conn.commit()
+
+
 def test_connection() -> bool:
     """
     Teste la connexion a PostgreSQL.
@@ -79,11 +105,17 @@ def setup_postgres() -> bool:
             _create_companies_table()
             print("Table companies creee avec succes!")
 
+            # Creer la table documents pour les PDF
+            print("\nCreation de la table documents (PDF metadata)...")
+            _create_documents_table()
+            print("Table documents creee avec succes!")
+
             print("\nTables PostgreSQL creees:")
             print("  - checkpoints: Etats complets du graphe a chaque etape")
             print("  - checkpoint_writes: Ecritures intermediaires (pending writes)")
             print("  - checkpoint_blobs: Stockage de donnees volumineuses")
             print("  - companies: Configuration des entreprises (multi-tenant)")
+            print("  - documents: Metadonnees des fichiers PDF (GCS)")
 
         print("\n" + "=" * 70)
         print("POSTGRESQL EST PRET!")

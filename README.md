@@ -10,6 +10,7 @@ Agent conversationnel intelligent avec **RAG** (Retrieval Augmented Generation),
 - **Multi-LLM** : support Ollama (local), Mistral (API cloud) et OpenAI (API cloud)
 - **API REST** avec FastAPI
 - **Streaming temps reel** via SSE + Redis Pub/Sub
+- **Upload de documents PDF** via Google Cloud Storage avec gestion CRUD depuis le frontend
 - **Interface web React** avec chat en temps reel
 
 ## Architecture
@@ -67,8 +68,9 @@ Frontend                    Backend (FastAPI)              Redis             Wor
 | **LLM** | Ollama (local) / Mistral (cloud) / OpenAI (cloud) |
 | **Embeddings** | HuggingFace (local) / Ollama (local) / Mistral (cloud) / OpenAI (cloud) |
 | **Backend** | FastAPI, SSE, Redis Pub/Sub |
-| **Frontend** | React, Vite, shadcn/ui |
-| **Database** | PostgreSQL (memoire + vectors), Redis (messaging) |
+| **Frontend** | React, Vite, shadcn/ui, React Router |
+| **Stockage fichiers** | Google Cloud Storage (PDF upload) |
+| **Database** | PostgreSQL (memoire + vectors + metadata docs), Redis (messaging) |
 | **Infra** | Docker Compose |
 
 ## Structure du projet (Clean Architecture)
@@ -114,21 +116,31 @@ RAG_CONV_AGENT/
 │   ├── main.py                          # Application FastAPI + Container DI
 │   ├── domain/
 │   │   ├── models/
-│   │   │   └── chat.py                  # ChatRequest, ChatResponse
+│   │   │   ├── chat.py                  # ChatRequest, ChatResponse
+│   │   │   └── document.py             # Document, DocumentResponse, etc.
 │   │   └── ports/
-│   │       └── event_broker_port.py     # Interface EventBroker (pub/sub)
+│   │       ├── event_broker_port.py     # Interface EventBroker (pub/sub)
+│   │       ├── file_storage_port.py     # Interface FileStorage (GCS)
+│   │       └── document_repository_port.py # Interface DocumentRepository
 │   ├── infrastructure/
 │   │   ├── container.py                 # Container DI (dependency-injector)
-│   │   └── adapters/
-│   │       └── broadcast_adapter.py     # Redis Broadcast (EventBrokerPort)
+│   │   ├── adapters/
+│   │   │   ├── broadcast_adapter.py     # Redis Broadcast (EventBrokerPort)
+│   │   │   └── gcs_storage_adapter.py   # Google Cloud Storage (FileStoragePort)
+│   │   └── repositories/
+│   │       └── document_repository.py   # PostgreSQL (DocumentRepositoryPort)
 │   └── routes/
 │       ├── chat.py                      # POST /chat (@inject)
-│       └── stream.py                    # GET /stream/{email} SSE (@inject)
+│       ├── stream.py                    # GET /stream/{email} SSE (@inject)
+│       └── documents.py                 # CRUD /documents (@inject)
 │
 ├── frontend/                            # Interface React
 │   ├── src/
-│   │   ├── App.jsx                      # Composant principal
-│   │   ├── components/                  # Composants UI (ChatWidget, etc.)
+│   │   ├── App.jsx                      # Composant principal + routing
+│   │   ├── components/
+│   │   │   ├── ChatWidget.jsx           # Widget chat SSE
+│   │   │   ├── DocumentsPage.jsx        # Page gestion documents (CRUD)
+│   │   │   └── DemoEcommerceWebsite.jsx # Page demo e-commerce
 │   │   └── hooks/                       # Custom hooks (SSE)
 │   └── package.json
 │
@@ -286,7 +298,23 @@ LLM_PROVIDER=mistral python main.py simple
 |----------|---------|-------------|
 | `/api/chat` | POST | Envoyer un message |
 | `/api/stream/{email}` | GET | SSE streaming reponse |
+| `/api/documents/upload` | POST | Upload un document PDF (multipart) |
+| `/api/documents` | GET | Lister les documents d'une entreprise |
+| `/api/documents/{id}` | DELETE | Supprimer un document (GCS + DB) |
 | `/health` | GET | Health check |
+
+### Exemple POST /documents/upload
+
+```bash
+curl -X POST "http://localhost:8000/api/documents/upload?company_id=techstore_123" \
+  -F "file=@mon_document.pdf"
+```
+
+### Exemple GET /documents
+
+```bash
+curl "http://localhost:8000/api/documents?company_id=techstore_123"
+```
 
 ### Exemple POST /chat
 
@@ -341,6 +369,12 @@ PGVECTOR_COLLECTION_NAME=documents
 DOCUMENTS_PATH=./documents
 CHUNK_SIZE=1000
 CHUNK_OVERLAP=200
+
+# Google Cloud Storage (upload de documents PDF)
+GCS_BUCKET_NAME=votre-bucket-name
+GCS_PROJECT_ID=votre-project-id
+GCS_SERVICE_ACCOUNT_KEY={"type":"service_account","project_id":"...","private_key":"...","client_email":"..."}
+# MAX_UPLOAD_SIZE_BYTES=10485760
 ```
 
 ## Concepts Cles
@@ -408,6 +442,33 @@ python main.py index-documents --company-id entreprise_B --documents-path ./docs
 ```
 
 **Isolation garantie** : Les requetes de `entreprise_A` ne voient jamais les documents de `entreprise_B`.
+
+### Gestion des Documents (Upload PDF)
+
+Les documents PDF peuvent etre uploades depuis le frontend et stockes dans Google Cloud Storage.
+Les metadonnees (nom, taille, date) sont enregistrees dans PostgreSQL.
+
+```
+Frontend (/documents)          Backend (FastAPI)            GCS + PostgreSQL
+   │                                 │                          │
+   ├── POST /documents/upload ─────► │                          │
+   │   (multipart + company_id)      ├── upload fichier ──────► │ GCS: bucket/{company_id}/{id}.pdf
+   │                                 ├── save metadata ───────► │ PostgreSQL: table documents
+   │   ◄── {status: "uploaded"} ─────┤                          │
+   │                                 │                          │
+   ├── GET /documents ──────────────►│                          │
+   │   (company_id)                  ├── SELECT * ────────────► │ PostgreSQL
+   │   ◄── [liste documents] ───────┤                          │
+   │                                 │                          │
+   ├── DELETE /documents/{id} ──────►│                          │
+   │   (company_id)                  ├── delete blob ─────────► │ GCS
+   │                                 ├── DELETE row ──────────► │ PostgreSQL
+   │   ◄── {status: "deleted"} ─────┤                          │
+```
+
+**Frontend** : Accessible via `http://localhost:3000/documents`
+
+**Isolation multi-tenant** : Chaque requete necessite un `company_id`. Les documents d'une entreprise ne sont jamais visibles par une autre.
 
 ### Architecture Event-Driven
 
