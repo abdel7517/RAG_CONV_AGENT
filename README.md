@@ -288,6 +288,129 @@ cd frontend && npm install && npm run dev
 
 Ouvrir http://localhost:3000
 
+## Deploiement Docker (Production)
+
+Le projet inclut une configuration Docker Compose complete pour deployer tous les services.
+
+### Prerequisites
+
+- Docker >= 20.10
+- Docker Compose >= 2.0
+
+### Services Docker
+
+| Service | Description | Port |
+|---------|-------------|------|
+| `postgres` | PostgreSQL + pgvector | 5432 |
+| `redis` | Message broker + Job queue | 6379 |
+| `db-init` | Initialisation DB (run once) | - |
+| `backend` | API FastAPI | 8000 |
+| `worker` | Worker ARQ (vectorisation PDF) | - |
+| `rag-agent` | Agent LangGraph RAG | - |
+| `frontend` | React SPA (Nginx) | 3000 |
+| `ollama` | LLM local (optionnel) | 11434 |
+
+### Configuration
+
+1. **Creer le fichier `.env`** a la racine du projet :
+
+```bash
+# LLM Provider
+LLM_PROVIDER=ollama
+OLLAMA_MODEL=qwen2.5:7b
+
+# Embedding Provider
+EMBEDDING_PROVIDER=huggingface
+HUGGINGFACE_EMBEDDING_MODEL=intfloat/multilingual-e5-large
+
+# PostgreSQL (optionnel, valeurs par defaut)
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_DB=agent_memory
+
+# Google Cloud Storage
+GCS_BUCKET_NAME=votre-bucket-name
+GCS_PROJECT_ID=votre-project-id
+
+# Limites
+MAX_UPLOAD_SIZE_BYTES=10485760
+MAX_PAGES_PER_COMPANY=5
+```
+
+2. **Creer le fichier `gcs-credentials.json`** a la racine du projet :
+
+Copiez votre fichier de cle de service Google Cloud :
+
+```bash
+cp /chemin/vers/votre-cle-service.json ./gcs-credentials.json
+```
+
+> **Note** : Ce fichier est dans `.gitignore` et ne sera pas commite.
+
+### Lancement
+
+**Sans Ollama** (utilise Mistral ou OpenAI cloud) :
+
+```bash
+docker compose up -d
+```
+
+**Avec Ollama** (LLM local) :
+
+```bash
+docker compose --profile ollama up -d
+
+# Telecharger le modele dans le container Ollama
+docker exec agent-ollama ollama pull qwen2.5:7b
+```
+
+### Verification
+
+```bash
+# Voir l'etat des services
+docker compose ps
+
+# Voir les logs de tous les services
+docker compose logs -f
+
+# Voir les logs d'un service specifique
+docker logs agent-backend
+docker logs agent-worker
+docker logs agent-rag
+docker logs agent-db-init
+```
+
+### Acces
+
+| Service | URL |
+|---------|-----|
+| Frontend | http://localhost:3000 |
+| API Backend | http://localhost:8000 |
+| API Docs (Swagger) | http://localhost:8000/docs |
+| Health Check | http://localhost:8000/health |
+
+### Arret
+
+```bash
+# Arreter tous les services
+docker compose down
+
+# Arreter et supprimer les volumes (reset complet)
+docker compose down -v
+```
+
+### Rebuild apres modification
+
+```bash
+# Rebuild un service specifique
+docker compose build backend
+docker compose up -d backend
+
+# Rebuild tous les services
+docker compose build --no-cache
+docker compose up -d
+```
+
 ## Utilisation CLI
 
 ```bash

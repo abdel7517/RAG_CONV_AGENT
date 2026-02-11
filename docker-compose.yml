@@ -61,6 +61,28 @@ services:
     #           capabilities: [gpu]
 
   # ==========================================================================
+  # DB-INIT - Database initialization (runs once)
+  # ==========================================================================
+  db-init:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: agent-db-init
+    command: ["python", "-c", "from src.infrastructure.db_setup import setup_postgres; setup_postgres()"]
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-agent_memory}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # ==========================================================================
   # BACKEND - FastAPI application
   # ==========================================================================
   backend:
@@ -79,8 +101,12 @@ services:
       REDIS_URL: redis://redis:6379
       # Ollama (Docker internal URL)
       OLLAMA_BASE_URL: http://ollama:11434
+      # GCS credentials
+      GOOGLE_APPLICATION_CREDENTIALS: /app/gcs-credentials.json
     env_file:
       - .env
+    volumes:
+      - ./gcs-credentials.json:/app/gcs-credentials.json:ro
     ports:
       - "8000:8000"
     depends_on:
@@ -88,6 +114,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   # ==========================================================================
@@ -110,13 +138,50 @@ services:
       REDIS_URL: redis://redis:6379
       # Ollama (Docker internal URL)
       OLLAMA_BASE_URL: http://ollama:11434
+      # GCS credentials
+      GOOGLE_APPLICATION_CREDENTIALS: /app/gcs-credentials.json
     env_file:
       - .env
+    volumes:
+      - ./gcs-credentials.json:/app/gcs-credentials.json:ro
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # ==========================================================================
+  # RAG-AGENT - LangGraph RAG conversation agent
+  # ==========================================================================
+  rag-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: agent-rag
+    command: ["python", "main.py", "serve-rag"]
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-agent_memory}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      REDIS_URL: redis://redis:6379
+      OLLAMA_BASE_URL: http://ollama:11434
+      GOOGLE_APPLICATION_CREDENTIALS: /app/gcs-credentials.json
+    env_file:
+      - .env
+    volumes:
+      - ./gcs-credentials.json:/app/gcs-credentials.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   # ==========================================================================
