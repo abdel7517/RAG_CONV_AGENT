@@ -1,5 +1,6 @@
 """Modele domain et schemas API pour la gestion des documents PDF."""
 
+import enum
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -12,6 +13,17 @@ from backend.domain.exceptions import (
     InvalidFileTypeError,
     FileTooLargeError,
 )
+
+
+class DocumentStatus(str, enum.Enum):
+    """Etats possibles d'un document dans le pipeline de traitement."""
+
+    QUEUED = "queued"
+    VALIDATING = "validating"
+    UPLOADING = "uploading"
+    VECTORIZING = "vectorizing"
+    COMPLETED = "completed"
+    FAILED = "failed"
 
 
 @dataclass
@@ -30,7 +42,8 @@ class Document:
     num_pages: int = 0
     content_type: str = "application/pdf"
     gcs_path: Optional[str] = None
-    is_vectorized: bool = False
+    status: str = DocumentStatus.QUEUED
+    error_message: Optional[str] = None
     uploaded_at: Optional[datetime] = None
 
     ALLOWED_CONTENT_TYPES: ClassVar[set[str]] = {"application/pdf"}
@@ -64,6 +77,7 @@ class Document:
             size_bytes=size_bytes,
             num_pages=num_pages,
             content_type=content_type,
+            status=DocumentStatus.QUEUED,
         )
 
     @staticmethod
@@ -92,7 +106,8 @@ class DocumentResponse(BaseModel):
     size_bytes: int
     num_pages: int
     content_type: str
-    is_vectorized: bool
+    status: str
+    error_message: Optional[str] = None
     uploaded_at: str
 
 

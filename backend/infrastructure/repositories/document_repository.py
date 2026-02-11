@@ -28,8 +28,8 @@ class PostgresDocumentRepository(DocumentRepositoryPort):
                     INSERT INTO documents (
                         document_id, company_id, filename,
                         gcs_path, size_bytes, num_pages,
-                        content_type, is_vectorized
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        content_type, status, error_message
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         document.document_id,
@@ -39,7 +39,8 @@ class PostgresDocumentRepository(DocumentRepositoryPort):
                         document.size_bytes,
                         document.num_pages,
                         document.content_type,
-                        document.is_vectorized,
+                        document.status,
+                        document.error_message,
                     ),
                 )
             await conn.commit()
@@ -60,7 +61,7 @@ class PostgresDocumentRepository(DocumentRepositoryPort):
                     """
                     SELECT document_id, company_id, filename,
                            gcs_path, size_bytes, num_pages,
-                           content_type, is_vectorized, uploaded_at
+                           content_type, status, error_message, uploaded_at
                     FROM documents
                     WHERE document_id = %s AND company_id = %s
                     """,
@@ -77,8 +78,9 @@ class PostgresDocumentRepository(DocumentRepositoryPort):
                         size_bytes=row[4],
                         num_pages=row[5],
                         content_type=row[6],
-                        is_vectorized=row[7],
-                        uploaded_at=row[8],
+                        status=row[7],
+                        error_message=row[8],
+                        uploaded_at=row[9],
                     )
                 return None
 
@@ -91,7 +93,7 @@ class PostgresDocumentRepository(DocumentRepositoryPort):
                     """
                     SELECT document_id, company_id, filename,
                            gcs_path, size_bytes, num_pages,
-                           content_type, is_vectorized, uploaded_at
+                           content_type, status, error_message, uploaded_at
                     FROM documents
                     WHERE company_id = %s
                     ORDER BY uploaded_at DESC
@@ -109,8 +111,9 @@ class PostgresDocumentRepository(DocumentRepositoryPort):
                         size_bytes=r[4],
                         num_pages=r[5],
                         content_type=r[6],
-                        is_vectorized=r[7],
-                        uploaded_at=r[8],
+                        status=r[7],
+                        error_message=r[8],
+                        uploaded_at=r[9],
                     )
                     for r in rows
                 ]
@@ -142,3 +145,39 @@ class PostgresDocumentRepository(DocumentRepositoryPort):
         if deleted:
             logger.info(f"Document {document_id} deleted for {company_id}")
         return deleted
+
+    async def update_status(
+        self, document_id: str, status: str, error_message: str | None = None
+    ) -> None:
+        async with await psycopg.AsyncConnection.connect(
+            settings.get_postgres_uri()
+        ) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE documents SET status = %s, error_message = %s
+                    WHERE document_id = %s
+                    """,
+                    (status, error_message, document_id),
+                )
+            await conn.commit()
+
+        logger.debug(f"Document {document_id} status -> {status}")
+
+    async def update_after_upload(
+        self, document_id: str, gcs_path: str, num_pages: int
+    ) -> None:
+        async with await psycopg.AsyncConnection.connect(
+            settings.get_postgres_uri()
+        ) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE documents SET gcs_path = %s, num_pages = %s
+                    WHERE document_id = %s
+                    """,
+                    (gcs_path, num_pages, document_id),
+                )
+            await conn.commit()
+
+        logger.info(f"Document {document_id} uploaded to {gcs_path} ({num_pages} pages)")

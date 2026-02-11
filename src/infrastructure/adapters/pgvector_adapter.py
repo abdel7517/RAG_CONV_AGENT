@@ -5,6 +5,7 @@ Utilise PostgreSQL avec l'extension pgvector pour stocker et rechercher les embe
 Le provider d'embedding est configurable via EMBEDDING_PROVIDER (ollama, mistral, openai, huggingface).
 """
 
+import asyncio
 import logging
 from typing import List, Optional, Tuple, Any
 
@@ -107,6 +108,23 @@ class PGVectorAdapter(VectorStorePort, RetrieverPort):
         )
 
         logger.info(f"Indexation terminee: {len(documents)} documents dans '{self.collection_name}'")
+
+    async def add_documents(self, documents: List[Document]) -> None:
+        """
+        Ajoute des documents au vector store existant (pas de pre_delete).
+
+        Utilise aadd_documents pour ajouter sans supprimer la collection.
+        """
+        if not documents:
+            logger.warning("Aucun document a ajouter")
+            return
+
+        logger.info(f"Ajout de {len(documents)} documents dans la collection '{self.collection_name}'")
+
+        vector_store = self._get_vector_store()
+        await asyncio.to_thread(vector_store.add_documents, documents)
+
+        logger.info(f"Ajout termine: {len(documents)} documents dans '{self.collection_name}'")
 
     def similarity_search(
         self,

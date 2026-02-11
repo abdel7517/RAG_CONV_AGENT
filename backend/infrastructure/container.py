@@ -13,6 +13,8 @@ from src.config import settings
 from backend.infrastructure.adapters.broadcast_adapter import BroadcastEventBroker
 from backend.infrastructure.adapters.gcs_storage_adapter import GCSFileStorageAdapter
 from backend.infrastructure.adapters.pypdf_analyzer_adapter import PypdfAnalyzerAdapter
+from backend.infrastructure.adapters.arq_job_queue_adapter import ArqJobQueueAdapter
+from backend.infrastructure.adapters.arq_job_queue_adapter import parse_redis_settings
 from backend.infrastructure.repositories.document_repository import PostgresDocumentRepository
 
 
@@ -49,6 +51,16 @@ class Container(containers.DeclarativeContainer):
     Broker d'evenements (Singleton).
     Une seule connexion Redis partagee par toute l'application.
     """
+
+    # =========================================================================
+    # JOB QUEUE
+    # =========================================================================
+
+    job_queue = providers.Singleton(
+        ArqJobQueueAdapter,
+        redis_settings=parse_redis_settings(settings.REDIS_URL),
+    )
+    """File d'attente ARQ pour les jobs de traitement de documents."""
 
     # =========================================================================
     # DOCUMENT MANAGEMENT

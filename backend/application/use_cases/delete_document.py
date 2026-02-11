@@ -22,5 +22,6 @@ class DeleteDocumentUseCase:
             document_id,
         )
 
-        await self._storage.delete(document.gcs_path)
+        if document.gcs_path:
+            await self._storage.delete(document.gcs_path)
         await self._repo.delete(document_id, company_id)

@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { Upload, Trash2, FileText, ArrowLeft, Loader2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
 import {
   AlertDialog,
@@ -16,6 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { useDocumentProgress } from '@/hooks/useDocumentProgress'
 
 const COMPANY_ID = 'techstore_123'
 
@@ -33,6 +35,39 @@ export function DocumentsPage() {
   const [isUploading, setIsUploading] = useState(false)
   const [error, setError] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
+  const [progressMap, setProgressMap] = useState({})
+
+  const { track, untrack } = useDocumentProgress()
+  const trackedRef = useRef(new Set())
+
+  const startTracking = useCallback((documentId) => {
+    if (trackedRef.current.has(documentId)) return
+    trackedRef.current.add(documentId)
+
+    track(documentId, {
+      onProgress: (data) => {
+        setProgressMap((prev) => ({ ...prev, [data.document_id]: data }))
+      },
+      onDone: (data) => {
+        trackedRef.current.delete(data.document_id)
+        setProgressMap((prev) => {
+          const next = { ...prev }
+          delete next[data.document_id]
+          return next
+        })
+        fetchDocuments()
+      },
+      onError: (docId) => {
+        trackedRef.current.delete(docId)
+        setProgressMap((prev) => {
+          const next = { ...prev }
+          delete next[docId]
+          return next
+        })
+        fetchDocuments()
+      },
+    })
+  }, [track])
 
   const fetchDocuments = useCallback(async () => {
     setIsLoading(true)
@@ -52,6 +87,13 @@ export function DocumentsPage() {
   useEffect(() => {
     fetchDocuments()
   }, [fetchDocuments])
+
+  // Tracker les documents en cours au chargement initial ou apres refresh
+  useEffect(() => {
+    documents
+      .filter((d) => d.status === 'queued' || d.status === 'vectorizing')
+      .forEach((doc) => startTracking(doc.document_id))
+  }, [documents, startTracking])
 
   const handleUpload = async (e) => {
     e.preventDefault()
@@ -73,8 +115,13 @@ export function DocumentsPage() {
         const errData = await res.json()
         throw new Error(errData.detail || "Erreur lors de l'upload")
       }
+
+      const uploaded = await res.json()
       fileInput.value = ''
       await fetchDocuments()
+
+      // Lancer le tracking SSE pour ce document
+      startTracking(uploaded.document_id)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -85,6 +132,15 @@ export function DocumentsPage() {
   const handleDelete = async () => {
     if (!deleteTarget) return
     try {
+      // Arreter le tracking si en cours
+      untrack(deleteTarget.document_id)
+      trackedRef.current.delete(deleteTarget.document_id)
+      setProgressMap((prev) => {
+        const next = { ...prev }
+        delete next[deleteTarget.document_id]
+        return next
+      })
+
       const res = await fetch(
         `/api/documents/${deleteTarget.document_id}?company_id=${COMPANY_ID}`,
         { method: 'DELETE' }
@@ -180,42 +236,54 @@ export function DocumentsPage() {
               </div>
             ) : (
               <div className="space-y-2">
-                {documents.map((doc) => (
-                  <div
-                    key={doc.document_id}
-                    className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <FileText className="h-8 w-8 text-red-500 flex-shrink-0" />
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium truncate">{doc.filename}</p>
-                          <Badge variant={doc.is_vectorized ? 'default' : 'secondary'} className="text-xs flex-shrink-0">
-                            {doc.is_vectorized ? 'Vectorise' : 'Non vectorise'}
-                          </Badge>
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                          {formatFileSize(doc.size_bytes)}
-                          {doc.num_pages > 0 && <> &middot; {doc.num_pages} page(s)</>}
-                          {doc.uploaded_at && (
-                            <> &middot; {new Date(doc.uploaded_at).toLocaleDateString('fr-FR')}</>
+                {documents.map((doc) => {
+                  const prog = progressMap[doc.document_id]
+                  return (
+                    <div
+                      key={doc.document_id}
+                      className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <FileText className="h-8 w-8 text-red-500 flex-shrink-0" />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium truncate">{doc.filename}</p>
+                            <Badge variant={doc.status === 'completed' ? 'default' : doc.status === 'failed' ? 'destructive' : 'secondary'} className="text-xs flex-shrink-0">
+                              {prog
+                                ? `${prog.progress}%`
+                                : doc.status === 'completed' ? 'Vectorise' : doc.status === 'failed' ? 'Erreur' : doc.status === 'queued' ? 'En attente' : 'En cours...'}
+                            </Badge>
+                          </div>
+                          {prog ? (
+                            <div className="mt-1.5 space-y-1">
+                              <Progress value={prog.progress} className="h-2" />
+                              <p className="text-xs text-muted-foreground">{prog.message}</p>
+                            </div>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">
+                              {formatFileSize(doc.size_bytes)}
+                              {doc.num_pages > 0 && <> &middot; {doc.num_pages} page(s)</>}
+                              {doc.uploaded_at && (
+                                <> &middot; {new Date(doc.uploaded_at).toLocaleDateString('fr-FR')}</>
+                              )}
+                            </p>
                           )}
-                        </p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 flex-shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setDeleteTarget(doc)}
+                          title="Supprimer"
+                          className="text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
-                    <div className="flex gap-2 flex-shrink-0">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setDeleteTarget(doc)}
-                        title="Supprimer"
-                        className="text-destructive hover:text-destructive"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </CardContent>

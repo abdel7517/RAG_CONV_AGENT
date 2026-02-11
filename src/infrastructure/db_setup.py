@@ -45,19 +45,21 @@ def _create_documents_table() -> None:
     Multi-tenant via company_id.
     """
     create_table_sql = """
-    CREATE TABLE IF NOT EXISTS documents (
+    DROP TABLE IF EXISTS documents;
+    CREATE TABLE documents (
         document_id VARCHAR(255) PRIMARY KEY,
         company_id VARCHAR(255) NOT NULL,
         filename VARCHAR(500) NOT NULL,
-        gcs_path VARCHAR(1000) NOT NULL,
+        gcs_path VARCHAR(1000),
         size_bytes BIGINT NOT NULL,
         num_pages INTEGER DEFAULT 0,
         content_type VARCHAR(100) DEFAULT 'application/pdf',
-        is_vectorized BOOLEAN DEFAULT FALSE,
+        status VARCHAR(50) DEFAULT 'queued',
+        error_message TEXT,
         uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
-    CREATE INDEX IF NOT EXISTS idx_documents_company_id
-        ON documents(company_id);
+    CREATE INDEX idx_documents_company_id ON documents(company_id);
+    CREATE INDEX idx_documents_status ON documents(status);
     """
 
     with psycopg.connect(settings.get_postgres_uri()) as conn:

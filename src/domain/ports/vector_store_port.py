@@ -59,3 +59,13 @@ class VectorStorePort(ABC):
             Liste de tuples (document, score)
         """
         pass
+
+    @abstractmethod
+    async def add_documents(self, documents: List[Any]) -> None:
+        """
+        Ajoute des documents au vector store sans supprimer les existants.
+
+        Args:
+            documents: Liste de documents LangChain a indexer
+        """
+        pass

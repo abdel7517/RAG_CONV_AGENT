@@ -35,6 +35,19 @@ class FileStoragePort(ABC):
         ...
 
     @abstractmethod
+    async def download(self, gcs_path: str) -> bytes:
+        """
+        Telecharge un fichier depuis le storage.
+
+        Args:
+            gcs_path: Chemin du fichier dans le storage
+
+        Returns:
+            Contenu binaire du fichier
+        """
+        ...
+
+    @abstractmethod
     async def delete(self, gcs_path: str) -> bool:
         """
         Supprime un fichier du storage.

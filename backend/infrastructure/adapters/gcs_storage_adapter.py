@@ -59,6 +59,12 @@ class GCSFileStorageAdapter(FileStoragePort):
         logger.info(f"Uploaded {gcs_path} to gs://{self._bucket_name}")
         return gcs_path
 
+    async def download(self, gcs_path: str) -> bytes:
+        blob = self._bucket.blob(gcs_path)
+        content = await asyncio.to_thread(blob.download_as_bytes)
+        logger.info(f"Downloaded {gcs_path} from gs://{self._bucket_name}")
+        return content
+
     async def delete(self, gcs_path: str) -> bool:
         blob = self._bucket.blob(gcs_path)
 

@@ -41,3 +41,17 @@ class DocumentRepositoryPort(ABC):
     async def get_total_pages(self, company_id: str) -> int:
         """Retourne le nombre total de pages PDF pour une entreprise."""
         ...
+
+    @abstractmethod
+    async def update_status(
+        self, document_id: str, status: str, error_message: str | None = None
+    ) -> None:
+        """Met a jour le statut d'un document."""
+        ...
+
+    @abstractmethod
+    async def update_after_upload(
+        self, document_id: str, gcs_path: str, num_pages: int
+    ) -> None:
+        """Met a jour gcs_path et num_pages apres upload GCS."""
+        ...

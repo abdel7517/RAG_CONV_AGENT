@@ -1,8 +1,11 @@
 """Routes CRUD pour la gestion des documents PDF."""
 
+import asyncio
+import json
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from sse_starlette.sse import EventSourceResponse
 from dependency_injector.wiring import inject, Provide
 
 from backend.application.use_cases.upload_document import UploadDocumentUseCase
@@ -20,8 +23,10 @@ from backend.domain.models.document import (
     DocumentUploadResponse,
     DocumentDeleteResponse,
 )
-from backend.domain.ports.file_storage_port import FileStoragePort
 from backend.domain.ports.document_repository_port import DocumentRepositoryPort
+from backend.domain.ports.event_broker_port import EventBrokerPort
+from backend.domain.ports.file_storage_port import FileStoragePort
+from backend.domain.ports.job_queue_port import JobQueuePort
 from backend.domain.ports.pdf_analyzer_port import PdfAnalyzerPort
 from backend.infrastructure.container import Container
 
@@ -29,21 +34,24 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+HEARTBEAT_INTERVAL = 30  # secondes
+
 
 @router.post("/documents/upload", response_model=DocumentUploadResponse)
 @inject
 async def upload_document(
     company_id: str = Query(..., description="ID de l'entreprise"),
     file: UploadFile = File(...),
-    storage: FileStoragePort = Depends(Provide[Container.file_storage]),
     repo: DocumentRepositoryPort = Depends(Provide[Container.document_repository]),
+    job_queue: JobQueuePort = Depends(Provide[Container.job_queue]),
+    storage: FileStoragePort = Depends(Provide[Container.file_storage]),
     pdf_analyzer: PdfAnalyzerPort = Depends(Provide[Container.pdf_analyzer]),
 ):
-    """Upload un document PDF pour une entreprise."""
+    """Upload un document PDF: valide, upload GCS, enqueue vectorisation."""
     if not company_id.strip():
         raise HTTPException(status_code=400, detail="company_id est obligatoire")
 
-    uc = UploadDocumentUseCase(storage, repo, pdf_analyzer)
+    uc = UploadDocumentUseCase(repo, job_queue, storage, pdf_analyzer)
     try:
         document = await uc.execute(
             company_id=company_id,
@@ -56,13 +64,57 @@ async def upload_document(
     except FileTooLargeError as e:
         raise HTTPException(status_code=413, detail=str(e))
     except PageLimitExceededError as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        raise HTTPException(status_code=413, detail=str(e))
 
     return DocumentUploadResponse(
-        status="uploaded",
+        status="queued",
         document_id=document.document_id,
         filename=document.filename,
     )
+
+
+@router.get("/documents/progress/{document_id}")
+@inject
+async def document_progress(
+    document_id: str,
+    broker: EventBrokerPort = Depends(Provide[Container.event_broker]),
+):
+    """
+    SSE endpoint pour suivre la progression du traitement d'un document.
+
+    Publie des evenements de type 'progress' avec:
+    - step: validating, uploading, vectorizing, completed, failed
+    - progress: pourcentage 0-100
+    - message: description lisible
+    - done: true quand le traitement est termine
+    """
+    async def event_generator():
+        channel = f"document_progress:{document_id}"
+
+        async with broker.subscribe(channel=channel) as subscription:
+            while True:
+                try:
+                    raw = await asyncio.wait_for(
+                        subscription.get(),
+                        timeout=HEARTBEAT_INTERVAL,
+                    )
+
+                    data = json.loads(raw)
+                    yield {"event": "progress", "data": json.dumps(data)}
+
+                    if data.get("done", False):
+                        break
+
+                except asyncio.TimeoutError:
+                    yield {"event": "heartbeat", "data": ""}
+                except Exception as e:
+                    yield {
+                        "event": "error",
+                        "data": json.dumps({"error": str(e)}),
+                    }
+                    break
+
+    return EventSourceResponse(event_generator())
 
 
 @router.get("/documents", response_model=DocumentListResponse)
@@ -87,7 +139,8 @@ async def list_documents(
                 size_bytes=d.size_bytes,
                 num_pages=d.num_pages,
                 content_type=d.content_type,
-                is_vectorized=d.is_vectorized,
+                status=d.status,
+                error_message=d.error_message,
                 uploaded_at=d.uploaded_at.isoformat() if d.uploaded_at else "",
             )
             for d in documents
@@ -101,7 +154,7 @@ async def list_documents(
 async def delete_document(
     document_id: str,
     company_id: str = Query(..., description="ID de l'entreprise"),
-    storage: FileStoragePort = Depends(Provide[Container.file_storage]),
+    storage=Depends(Provide[Container.file_storage]),
     repo: DocumentRepositoryPort = Depends(Provide[Container.document_repository]),
 ):
     """Supprime un document (GCS + metadonnees PostgreSQL)."""

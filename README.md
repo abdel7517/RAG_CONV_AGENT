@@ -11,6 +11,8 @@ Agent conversationnel intelligent avec **RAG** (Retrieval Augmented Generation),
 - **API REST** avec FastAPI
 - **Streaming temps reel** via SSE + Redis Pub/Sub
 - **Upload de documents PDF** via Google Cloud Storage avec gestion CRUD depuis le frontend
+- **Worker de vectorisation (ARQ)** : traitement asynchrone des PDF (chunking + embeddings pgvector)
+- **Progression temps reel** : suivi SSE de la vectorisation avec barre de progression dans le frontend
 - **Interface web React** avec chat en temps reel
 
 ## Architecture
@@ -68,9 +70,11 @@ Frontend                    Backend (FastAPI)              Redis             Wor
 | **LLM** | Ollama (local) / Mistral (cloud) / OpenAI (cloud) |
 | **Embeddings** | HuggingFace (local) / Ollama (local) / Mistral (cloud) / OpenAI (cloud) |
 | **Backend** | FastAPI, SSE, Redis Pub/Sub |
+| **Job Queue** | ARQ (async Redis queue) |
+| **Worker** | ARQ worker (vectorisation PDF) |
 | **Frontend** | React, Vite, shadcn/ui, React Router |
 | **Stockage fichiers** | Google Cloud Storage (PDF upload) |
-| **Database** | PostgreSQL (memoire + vectors + metadata docs), Redis (messaging) |
+| **Database** | PostgreSQL (memoire + vectors + metadata docs), Redis (messaging + job queue) |
 | **Infra** | Docker Compose |
 
 ## Structure du projet (Clean Architecture)
@@ -118,30 +122,47 @@ RAG_CONV_AGENT/
 │   │   ├── models/
 │   │   │   ├── chat.py                  # ChatRequest, ChatResponse
 │   │   │   └── document.py             # Document, DocumentResponse, etc.
-│   │   └── ports/
-│   │       ├── event_broker_port.py     # Interface EventBroker (pub/sub)
-│   │       ├── file_storage_port.py     # Interface FileStorage (GCS)
-│   │       └── document_repository_port.py # Interface DocumentRepository
+│   │   ├── ports/
+│   │   │   ├── event_broker_port.py     # Interface EventBroker (pub/sub)
+│   │   │   ├── file_storage_port.py     # Interface FileStorage (GCS)
+│   │   │   ├── job_queue_port.py        # Interface JobQueue (ARQ)
+│   │   │   ├── pdf_analyzer_port.py     # Interface PdfAnalyzer
+│   │   │   └── document_repository_port.py # Interface DocumentRepository
+│   │   └── exceptions.py               # Exceptions metier (PageLimitExceeded, etc.)
+│   ├── application/use_cases/
+│   │   ├── upload_document.py           # Validate + GCS upload + enqueue ARQ
+│   │   └── delete_document.py           # Suppression GCS + DB + vectors
 │   ├── infrastructure/
 │   │   ├── container.py                 # Container DI (dependency-injector)
 │   │   ├── adapters/
 │   │   │   ├── broadcast_adapter.py     # Redis Broadcast (EventBrokerPort)
-│   │   │   └── gcs_storage_adapter.py   # Google Cloud Storage (FileStoragePort)
+│   │   │   ├── gcs_storage_adapter.py   # Google Cloud Storage (FileStoragePort)
+│   │   │   ├── arq_job_queue_adapter.py # ARQ async queue (JobQueuePort)
+│   │   │   └── pypdf_analyzer_adapter.py # PyPDF comptage pages (PdfAnalyzerPort)
 │   │   └── repositories/
 │   │       └── document_repository.py   # PostgreSQL (DocumentRepositoryPort)
-│   └── routes/
-│       ├── chat.py                      # POST /chat (@inject)
-│       ├── stream.py                    # GET /stream/{email} SSE (@inject)
-│       └── documents.py                 # CRUD /documents (@inject)
+│   ├── routes/
+│   │   ├── chat.py                      # POST /chat (@inject)
+│   │   ├── stream.py                    # GET /stream/{email} SSE (@inject)
+│   │   └── documents.py                 # CRUD /documents + SSE progress (@inject)
+│   └── worker/                          # Worker ARQ de vectorisation
+│       ├── __main__.py                  # Entry point (arq run_worker)
+│       ├── settings.py                  # WorkerSettings ARQ (startup/shutdown)
+│       ├── tasks.py                     # Tache ARQ process_document
+│       ├── container.py                 # Container DI worker
+│       └── use_cases/
+│           └── process_document.py      # Pipeline: download → chunk → embed → cleanup
 │
 ├── frontend/                            # Interface React
 │   ├── src/
 │   │   ├── App.jsx                      # Composant principal + routing
 │   │   ├── components/
 │   │   │   ├── ChatWidget.jsx           # Widget chat SSE
-│   │   │   ├── DocumentsPage.jsx        # Page gestion documents (CRUD)
+│   │   │   ├── DocumentsPage.jsx        # Page gestion documents (CRUD + progress)
 │   │   │   └── DemoEcommerceWebsite.jsx # Page demo e-commerce
-│   │   └── hooks/                       # Custom hooks (SSE)
+│   │   └── hooks/
+│   │       ├── useSSE.js                # Hook SSE chat streaming
+│   │       └── useDocumentProgress.js   # Hook SSE progression vectorisation
 │   └── package.json
 │
 ├── documents/                           # Documents PDF pour RAG
@@ -257,7 +278,11 @@ uvicorn backend.main:app --reload --port 8000
 # Terminal 2: Agent en mode serveur
 python main.py serve-rag
 
-# Terminal 3: Frontend React
+# Terminal 3: Worker de vectorisation (traitement asynchrone des PDF)
+python -m backend.worker
+# ou : arq backend.worker.settings.WorkerSettings
+
+# Terminal 4: Frontend React
 cd frontend && npm install && npm run dev
 ```
 
@@ -300,7 +325,8 @@ LLM_PROVIDER=mistral python main.py simple
 | `/api/stream/{email}` | GET | SSE streaming reponse |
 | `/api/documents/upload` | POST | Upload un document PDF (multipart) |
 | `/api/documents` | GET | Lister les documents d'une entreprise |
-| `/api/documents/{id}` | DELETE | Supprimer un document (GCS + DB) |
+| `/api/documents/{id}` | DELETE | Supprimer un document (GCS + DB + vectors) |
+| `/api/documents/progress/{id}` | GET | SSE progression vectorisation temps reel |
 | `/health` | GET | Health check |
 
 ### Exemple POST /documents/upload
@@ -374,7 +400,10 @@ CHUNK_OVERLAP=200
 GCS_BUCKET_NAME=votre-bucket-name
 GCS_PROJECT_ID=votre-project-id
 GCS_SERVICE_ACCOUNT_KEY={"type":"service_account","project_id":"...","private_key":"...","client_email":"..."}
-# MAX_UPLOAD_SIZE_BYTES=10485760
+
+# Limites documents
+MAX_UPLOAD_SIZE_BYTES=10485760    # 10 MB max par fichier
+MAX_PAGES_PER_COMPANY=5           # Quota de pages par entreprise
 ```
 
 ## Concepts Cles
@@ -443,38 +472,47 @@ python main.py index-documents --company-id entreprise_B --documents-path ./docs
 
 **Isolation garantie** : Les requetes de `entreprise_A` ne voient jamais les documents de `entreprise_B`.
 
-### Gestion des Documents (Upload PDF)
+### Gestion des Documents (Upload + Vectorisation)
 
-Les documents PDF peuvent etre uploades depuis le frontend et stockes dans Google Cloud Storage.
-Les metadonnees (nom, taille, date) sont enregistrees dans PostgreSQL.
+Les documents PDF sont uploades depuis le frontend, stockes temporairement dans GCS, puis vectorises de facon asynchrone par un worker ARQ. Le frontend suit la progression en temps reel via SSE.
+
+**Pipeline complet :**
 
 ```
-Frontend (/documents)          Backend (FastAPI)            GCS + PostgreSQL
-   │                                 │                          │
-   ├── POST /documents/upload ─────► │                          │
-   │   (multipart + company_id)      ├── upload fichier ──────► │ GCS: bucket/{company_id}/{id}.pdf
-   │                                 ├── save metadata ───────► │ PostgreSQL: table documents
-   │   ◄── {status: "uploaded"} ─────┤                          │
-   │                                 │                          │
-   ├── GET /documents ──────────────►│                          │
-   │   (company_id)                  ├── SELECT * ────────────► │ PostgreSQL
-   │   ◄── [liste documents] ───────┤                          │
-   │                                 │                          │
-   ├── DELETE /documents/{id} ──────►│                          │
-   │   (company_id)                  ├── delete blob ─────────► │ GCS
-   │                                 ├── DELETE row ──────────► │ PostgreSQL
-   │   ◄── {status: "deleted"} ─────┤                          │
+Frontend (/documents)      Backend (FastAPI)        Redis (ARQ)       Worker ARQ          GCS + pgvector
+   │                            │                      │                  │                    │
+   ├── POST /upload ──────────► │                      │                  │                    │
+   │   (PDF + company_id)       ├── validate + pages   │                  │                    │
+   │                            ├── upload GCS ──────► │                  │                  ► │ GCS
+   │                            ├── save metadata ───► │                  │                  ► │ PostgreSQL
+   │                            ├── enqueue_job ─────► │                  │                    │
+   │   ◄── {document_id} ──────┤                      │                  │                    │
+   │                            │                      ├── process_doc ─► │                    │
+   │── GET /progress/{id} ────► │                      │                  ├── download GCS     │
+   │   (SSE)                    │◄── subscribe ──────► │◄── 10% ─────────┤                    │
+   │   ◄── progress 10% ───────┤                      │◄── 45% ─────────┤ chunk + embed      │
+   │   ◄── progress 45% ───────┤                      │                  ├── store vectors ─► │ pgvector
+   │   ◄── progress 100% ──────┤                      │◄── done ────────┤── delete GCS ────► │
+   │   (barre progression UI)  │                      │                  │                    │
 ```
 
-**Frontend** : Accessible via `http://localhost:3000/documents`
+**Etapes du worker (document status: `queued` → `vectorizing` → `completed`):**
+
+1. **Download** (0-10%) : Telecharge le PDF depuis GCS
+2. **Chunking** (10-20%) : Decoupe en chunks avec RecursiveCharacterTextSplitter
+3. **Embedding** (20-95%) : Genere les embeddings par batch de 10, progresse de 20% a 95%
+4. **Completion** (100%) : Met a jour le status en DB, supprime le fichier source GCS
+
+**Frontend** : Accessible via `http://localhost:3000/documents` — affiche une barre de progression en temps reel pendant la vectorisation.
 
 **Isolation multi-tenant** : Chaque requete necessite un `company_id`. Les documents d'une entreprise ne sont jamais visibles par une autre.
 
 ### Architecture Event-Driven
 
-- **Redis Pub/Sub** pour la communication asynchrone
-- **SSE** pour le streaming temps reel vers le frontend
-- **Worker** decouple pour le traitement des messages
+- **Redis Pub/Sub** (via `broadcaster`) pour la communication asynchrone et la progression SSE
+- **ARQ** (async Redis queue) pour la file d'attente de jobs de vectorisation
+- **SSE** pour le streaming temps reel vers le frontend (chat + progression documents)
+- **Workers decouples** : agent LangChain (chat) + worker ARQ (vectorisation PDF)
 
 ### Memoire Persistante
 
