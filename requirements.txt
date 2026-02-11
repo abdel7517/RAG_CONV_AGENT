@@ -23,6 +23,7 @@ uvicorn[standard]>=0.27.0
 broadcaster[redis]>=0.3.0
 sse-starlette>=2.0.0
 redis>=5.0.0
+arq>=0.26.0
 httpx>=0.25.0
 pydantic[email]>=2.0.0
 

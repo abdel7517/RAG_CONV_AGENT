@@ -1,13 +1,14 @@
-version: '3.8'
-
 services:
+  # ==========================================================================
+  # DATABASE - PostgreSQL with pgvector extension
+  # ==========================================================================
   postgres:
     image: pgvector/pgvector:pg15
     container_name: agent-postgres
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: agent_memory
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-agent_memory}
     ports:
       - "5432:5432"
     volumes:
@@ -19,6 +20,9 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # ==========================================================================
+  # REDIS - Message broker + Job queue (ARQ)
+  # ==========================================================================
   redis:
     image: redis:7-alpine
     container_name: agent-redis
@@ -33,8 +37,106 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # ==========================================================================
+  # OLLAMA - Local LLM (optional, use profile to enable)
+  # Run with: docker compose --profile ollama up
+  # ==========================================================================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: agent-ollama
+    profiles:
+      - ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    # Uncomment for GPU support (NVIDIA)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  # ==========================================================================
+  # BACKEND - FastAPI application
+  # ==========================================================================
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: agent-backend
+    environment:
+      # Database
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-agent_memory}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      # Redis
+      REDIS_URL: redis://redis:6379
+      # Ollama (Docker internal URL)
+      OLLAMA_BASE_URL: http://ollama:11434
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ==========================================================================
+  # WORKER - ARQ async job processor (document vectorization)
+  # ==========================================================================
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: agent-worker
+    command: ["python", "-m", "backend.worker"]
+    environment:
+      # Database
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-agent_memory}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      # Redis
+      REDIS_URL: redis://redis:6379
+      # Ollama (Docker internal URL)
+      OLLAMA_BASE_URL: http://ollama:11434
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ==========================================================================
+  # FRONTEND - React SPA with Nginx
+  # ==========================================================================
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: agent-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
 volumes:
   postgres_data:
     driver: local
   redis_data:
+    driver: local
+  ollama_data:
     driver: local
