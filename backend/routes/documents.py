@@ -156,9 +156,10 @@ async def delete_document(
     company_id: str = Query(..., description="ID de l'entreprise"),
     storage=Depends(Provide[Container.file_storage]),
     repo: DocumentRepositoryPort = Depends(Provide[Container.document_repository]),
+    vector_store=Depends(Provide[Container.vector_store]),
 ):
-    """Supprime un document (GCS + metadonnees PostgreSQL)."""
-    uc = DeleteDocumentUseCase(storage, repo)
+    """Supprime un document (GCS + metadonnees PostgreSQL + vecteurs)."""
+    uc = DeleteDocumentUseCase(storage, repo, vector_store)
     try:
         await uc.execute(document_id, company_id)
     except DocumentNotFoundError:

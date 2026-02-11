@@ -85,7 +85,6 @@ class RAGService:
         Returns:
             Chaîne formatée avec les documents pertinents
         """
-        logger.debug(f"RAGService.search_formatted: query='{query[:50]}...', company_id={company_id}")
         return self._retriever.retrieve_formatted(query, k=k, company_id=company_id)
 
     def search_with_scores(

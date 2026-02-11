@@ -315,7 +315,7 @@ class SimpleAgent:
         logger.debug(f"RAG: Recherche pour: {user_input[:50]}...")
         rag_context = self.rag_service.search_formatted(user_input, company_id=company_id)
 
-        if not rag_context:
+        if rag_context is None:
             logger.info(f"RAG: Aucun document pour company_id={company_id}")
             return None
 
@@ -378,6 +378,7 @@ class SimpleAgent:
 
         message = self._enrich_with_rag(user_input, company_id)
         if message is None:
+            logger.debug(f"PAS DE CHUNK TROUVER POUR {user_input[:50]}... (company_id={company_id})")
             yield "Je n'ai pas cette information dans notre documentation."
             return
 

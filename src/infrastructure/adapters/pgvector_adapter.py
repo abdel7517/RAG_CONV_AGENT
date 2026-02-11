@@ -126,6 +126,38 @@ class PGVectorAdapter(VectorStorePort, RetrieverPort):
 
         logger.info(f"Ajout termine: {len(documents)} documents dans '{self.collection_name}'")
 
+    async def delete_by_document_id(self, document_id: str) -> int:
+        """
+        Supprime tous les vecteurs associés à un document.
+
+        Args:
+            document_id: ID du document dont les vecteurs doivent être supprimés
+
+        Returns:
+            Nombre de vecteurs supprimés
+        """
+        import psycopg
+        from psycopg.rows import tuple_row
+
+        logger.info(f"Suppression des vecteurs pour document_id={document_id}")
+
+        async with await psycopg.AsyncConnection.connect(self.connection_string) as conn:
+            async with conn.cursor(row_factory=tuple_row) as cur:
+                await cur.execute(
+                    """
+                    DELETE FROM langchain_pg_embedding
+                    WHERE cmetadata->>'document_id' = %s
+                    RETURNING id
+                    """,
+                    (document_id,)
+                )
+                deleted_rows = await cur.fetchall()
+                deleted_count = len(deleted_rows)
+                await conn.commit()
+
+        logger.info(f"Suppression terminée: {deleted_count} vecteurs supprimés pour document_id={document_id}")
+        return deleted_count
+
     def similarity_search(
         self,
         query: str,
@@ -150,7 +182,6 @@ class PGVectorAdapter(VectorStorePort, RetrieverPort):
         logger.debug(f"Recherche: '{query[:50]}...' (k={k}, company_id={company_id})")
         results = vector_store.similarity_search(query, **search_kwargs)
         logger.debug(f"  -> {len(results)} resultats trouves")
-
         return results
 
     def similarity_search_with_score(
@@ -202,7 +233,7 @@ class PGVectorAdapter(VectorStorePort, RetrieverPort):
         query: str,
         k: Optional[int] = None,
         company_id: Optional[str] = None
-    ) -> List[Any]:
+    ) -> List[Any] | None:
         """
         Recherche les documents pertinents pour une requete.
 
@@ -214,8 +245,9 @@ class PGVectorAdapter(VectorStorePort, RetrieverPort):
         Returns:
             Liste des documents pertinents
         """
-        logger.info(f"Recherche: '{query[:100]}...' (company_id={company_id})")
         documents = self.similarity_search(query, k=k, company_id=company_id)
+        if (len(documents) == 0):
+            return None
         logger.info(f"  -> {len(documents)} documents trouves")
         return documents
 
@@ -270,7 +302,7 @@ class PGVectorAdapter(VectorStorePort, RetrieverPort):
         query: str,
         k: Optional[int] = None,
         company_id: Optional[str] = None
-    ) -> str:
+    ) -> str | None:
         """
         Recherche et retourne les documents formates.
 
@@ -283,4 +315,6 @@ class PGVectorAdapter(VectorStorePort, RetrieverPort):
             Chaine formatee avec les documents pertinents
         """
         documents = self.retrieve(query, k, company_id)
+        if documents is None:
+            return None
         return self.format_documents(documents)

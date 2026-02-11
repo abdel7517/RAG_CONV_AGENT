@@ -16,6 +16,7 @@ from backend.infrastructure.adapters.pypdf_analyzer_adapter import PypdfAnalyzer
 from backend.infrastructure.adapters.arq_job_queue_adapter import ArqJobQueueAdapter
 from backend.infrastructure.adapters.arq_job_queue_adapter import parse_redis_settings
 from backend.infrastructure.repositories.document_repository import PostgresDocumentRepository
+from src.infrastructure.adapters.pgvector_adapter import PGVectorAdapter
 
 
 class Container(containers.DeclarativeContainer):
@@ -83,3 +84,8 @@ class Container(containers.DeclarativeContainer):
         PypdfAnalyzerAdapter,
     )
     """Analyseur PDF pour le comptage de pages (Singleton)."""
+    
+    vector_store = providers.Singleton(
+        PGVectorAdapter,
+    )
+    """Vector store pour les embeddings (Singleton)."""

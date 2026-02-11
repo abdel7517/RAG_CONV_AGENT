@@ -69,3 +69,16 @@ class VectorStorePort(ABC):
             documents: Liste de documents LangChain a indexer
         """
         pass
+
+    @abstractmethod
+    async def delete_by_document_id(self, document_id: str) -> int:
+        """
+        Supprime tous les vecteurs associés à un document.
+
+        Args:
+            document_id: ID du document dont les vecteurs doivent être supprimés
+
+        Returns:
+            Nombre de vecteurs supprimés
+        """
+        pass
