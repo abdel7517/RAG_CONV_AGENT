@@ -106,7 +106,11 @@ services:
     env_file:
       - .env
     volumes:
+      - ./src:/app/src
+      - ./backend:/app/backend
+      - ./main.py:/app/main.py
       - ./gcs-credentials.json:/app/gcs-credentials.json:ro
+    command: ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     ports:
       - "8000:8000"
     depends_on:
@@ -143,6 +147,9 @@ services:
     env_file:
       - .env
     volumes:
+      - ./src:/app/src
+      - ./backend:/app/backend
+      - ./main.py:/app/main.py
       - ./gcs-credentials.json:/app/gcs-credentials.json:ro
     depends_on:
       postgres:
@@ -174,6 +181,9 @@ services:
     env_file:
       - .env
     volumes:
+      - ./src:/app/src
+      - ./backend:/app/backend
+      - ./main.py:/app/main.py
       - ./gcs-credentials.json:/app/gcs-credentials.json:ro
     depends_on:
       postgres:
