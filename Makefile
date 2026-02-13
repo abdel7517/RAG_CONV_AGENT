@@ -32,7 +32,7 @@ down: ## Arreter tous les services
 	docker compose down
 
 restart: ## Redemarrer backend, worker, rag-agent et frontend
-	docker compose restart backend worker rag-agent frontend
+	docker compose restart backend worker rag-agent
 
 restart-backend: ## Redemarrer uniquement le backend
 	docker compose restart backend
@@ -42,6 +42,9 @@ restart-worker: ## Redemarrer uniquement le worker
 
 restart-rag: ## Redemarrer uniquement rag-agent
 	docker compose restart rag-agent
+
+restart-frontend: ## Redemarrer uniquement le frontend (avec rebuild) car l'image creer des fichier statiques qui contienne les var d'env lors du build
+	docker compose up -d --build frontend
 
 # =============================================================================
 # Build
