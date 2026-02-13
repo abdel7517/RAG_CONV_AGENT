@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react'
+import { API_URL } from '@/config'
 
 /**
  * Hook pour suivre la progression du traitement de documents via SSE.
@@ -17,7 +18,7 @@ export function useDocumentProgress() {
       sourcesRef.current[documentId].close()
     }
 
-    const url = `/api/documents/progress/${documentId}`
+    const url = `${API_URL}/api/documents/progress/${documentId}`
     const es = new EventSource(url)
 
     // Le backend envoie des named events "progress" (pas des events generiques "message")

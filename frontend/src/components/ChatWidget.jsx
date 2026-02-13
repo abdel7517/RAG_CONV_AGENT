@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { useSSE } from '@/hooks/useSSE'
 import { cn } from '@/lib/utils'
+import { API_URL } from '@/config'
 
 function ChatMessage({ role, content }) {
   const isUser = role === 'user'
@@ -129,7 +130,7 @@ export function ChatWidget({ defaultEmail = '', companyId }) {
     connect()
 
     try {
-      const response = await fetch('/api/chat', {
+      const response = await fetch(`${API_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

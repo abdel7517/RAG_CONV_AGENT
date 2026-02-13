@@ -18,6 +18,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { useDocumentProgress } from '@/hooks/useDocumentProgress'
+import { API_URL } from '@/config'
 
 const COMPANY_ID = 'techstore_123'
 
@@ -73,7 +74,7 @@ export function DocumentsPage() {
     setIsLoading(true)
     setError(null)
     try {
-      const res = await fetch(`/api/documents?company_id=${COMPANY_ID}`)
+      const res = await fetch(`${API_URL}/api/documents?company_id=${COMPANY_ID}`)
       if (!res.ok) throw new Error()
       const data = await res.json()
       setDocuments(data.documents)
@@ -107,7 +108,7 @@ export function DocumentsPage() {
       const formData = new FormData()
       formData.append('file', file)
 
-      const res = await fetch(`/api/documents/upload?company_id=${COMPANY_ID}`, {
+      const res = await fetch(`${API_URL}/api/documents/upload?company_id=${COMPANY_ID}`, {
         method: 'POST',
         body: formData,
       })
@@ -142,7 +143,7 @@ export function DocumentsPage() {
       })
 
       const res = await fetch(
-        `/api/documents/${deleteTarget.document_id}?company_id=${COMPANY_ID}`,
+        `${API_URL}/api/documents/${deleteTarget.document_id}?company_id=${COMPANY_ID}`,
         { method: 'DELETE' }
       )
       if (!res.ok) throw new Error('Erreur lors de la suppression')

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react'
+import { API_URL } from '@/config'
 
 export function useSSE(email, onMessage, onError) {
   const eventSourceRef = useRef(null)
@@ -6,7 +7,7 @@ export function useSSE(email, onMessage, onError) {
   const connect = useCallback(() => {
     if (!email) return
 
-    const url = `/api/stream/${encodeURIComponent(email)}`
+    const url = `${API_URL}/api/stream/${encodeURIComponent(email)}`
     const eventSource = new EventSource(url)
 
     eventSource.onmessage = (event) => {
