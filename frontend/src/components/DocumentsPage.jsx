@@ -18,7 +18,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { useDocumentProgress } from '@/hooks/useDocumentProgress'
-import { API_URL } from '@/config'
+import { API_URL, MAX_PAGES_PER_COMPANY } from '@/config'
 
 const COMPANY_ID = 'techstore_123'
 
@@ -221,7 +221,7 @@ export function DocumentsPage() {
               <div className="flex items-center gap-2">
                 <Badge variant="secondary">{documents.length} fichier(s)</Badge>
                 <Badge variant="outline">
-                  {documents.reduce((sum, d) => sum + (d.num_pages || 0), 0)} / 5 pages
+                  {documents.reduce((sum, d) => sum + (d.num_pages || 0), 0)} / {MAX_PAGES_PER_COMPANY} pages
                 </Badge>
               </div>
             </CardTitle>
