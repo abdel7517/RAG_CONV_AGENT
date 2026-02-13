@@ -1,5 +1,6 @@
 import React from 'react'
-import { ShoppingCart, Star, Truck, RotateCcw, Shield, Headphones, User } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { ShoppingCart, Star, Truck, RotateCcw, Shield, Headphones, User, Database } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -84,6 +85,15 @@ export function DemoEcommerceWebsite() {
               </nav>
             </div>
             <div className="flex items-center gap-4">
+              {/* Bandeau Demo Mode */}
+              <Link
+                to="/documents"
+                className="hidden sm:flex items-center gap-2 bg-amber-100 border border-amber-300 rounded-lg px-3 py-1.5 hover:bg-amber-200 transition-colors"
+              >
+                <Database className="h-4 w-4 text-amber-700" />
+                <span className="text-amber-800 text-sm font-medium">Mode Demo</span>
+                <span className="text-amber-700 text-xs">— Ajouter / modifier les sources</span>
+              </Link>
               <Button variant="ghost" size="icon" className="relative">
                 <ShoppingCart className="h-5 w-5" />
                 <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs">
