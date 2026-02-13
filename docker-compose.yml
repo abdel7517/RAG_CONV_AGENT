@@ -185,13 +185,30 @@ services:
     restart: unless-stopped
 
   # ==========================================================================
-  # FRONTEND - React SPA with Nginx
+  # FRONTEND - Static files (production, served by external nginx)
   # ==========================================================================
   frontend:
     build:
       context: .
       dockerfile: Dockerfile.frontend
+      target: production
     container_name: agent-frontend
+    volumes:
+      - /var/www/rag-agent:/dist
+    restart: unless-stopped
+
+  # ==========================================================================
+  # FRONTEND-NGINX - React SPA with Nginx (local testing only)
+  # Run with: docker compose --profile local up
+  # ==========================================================================
+  frontend-nginx:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      target: nginx
+    container_name: agent-frontend-nginx
+    profiles:
+      - local
     ports:
       - "3000:80"
     depends_on:

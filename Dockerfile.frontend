@@ -1,4 +1,6 @@
+# =============================================================================
 # Build stage
+# =============================================================================
 FROM node:20-alpine AS builder
 
 WORKDIR /app
@@ -15,8 +17,21 @@ COPY frontend/ .
 # Build the application
 RUN npm run build
 
-# Production stage
-FROM nginx:alpine
+# =============================================================================
+# Production stage - expose static files via volume (no nginx)
+# =============================================================================
+FROM alpine AS production
+
+# Copy built files to staging area (not the mount point)
+COPY --from=builder /app/dist /app/dist
+
+# At runtime, copy files to the mounted volume and keep container alive
+CMD cp -r /app/dist/* /dist/ && echo "Frontend files copied to /dist" && tail -f /dev/null
+
+# =============================================================================
+# Nginx stage - for local testing
+# =============================================================================
+FROM nginx:alpine AS nginx
 
 # Copy built files from builder
 COPY --from=builder /app/dist /usr/share/nginx/html
