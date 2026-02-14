@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .infrastructure.container import Container
-from .routes import chat_router, stream_router, documents_router
+from .routes import chat_router, stream_router, documents_router, auth_router
 
 container = Container()
 
@@ -39,6 +39,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(chat_router, prefix="/api", tags=["chat"])
 app.include_router(stream_router, prefix="/api", tags=["stream"])
 app.include_router(documents_router, prefix="/api", tags=["documents"])

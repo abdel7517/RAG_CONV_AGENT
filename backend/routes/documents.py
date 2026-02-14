@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sse_starlette.sse import EventSourceResponse
 from dependency_injector.wiring import inject, Provide
 
@@ -29,6 +29,7 @@ from backend.domain.ports.file_storage_port import FileStoragePort
 from backend.domain.ports.job_queue_port import JobQueuePort
 from backend.domain.ports.pdf_analyzer_port import PdfAnalyzerPort
 from backend.infrastructure.container import Container
+from backend.routes.dependencies import CurrentUser
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ HEARTBEAT_INTERVAL = 30  # secondes
 @router.post("/documents/upload", response_model=DocumentUploadResponse)
 @inject
 async def upload_document(
-    company_id: str = Query(..., description="ID de l'entreprise"),
+    current_user: CurrentUser,
     file: UploadFile = File(...),
     repo: DocumentRepositoryPort = Depends(Provide[Container.document_repository]),
     job_queue: JobQueuePort = Depends(Provide[Container.job_queue]),
@@ -48,8 +49,7 @@ async def upload_document(
     pdf_analyzer: PdfAnalyzerPort = Depends(Provide[Container.pdf_analyzer]),
 ):
     """Upload un document PDF: valide, upload GCS, enqueue vectorisation."""
-    if not company_id.strip():
-        raise HTTPException(status_code=400, detail="company_id est obligatoire")
+    company_id = current_user.company_id
 
     uc = UploadDocumentUseCase(repo, job_queue, storage, pdf_analyzer)
     try:
@@ -120,12 +120,11 @@ async def document_progress(
 @router.get("/documents", response_model=DocumentListResponse)
 @inject
 async def list_documents(
-    company_id: str = Query(..., description="ID de l'entreprise"),
+    current_user: CurrentUser,
     repo: DocumentRepositoryPort = Depends(Provide[Container.document_repository]),
 ):
     """Liste tous les documents d'une entreprise."""
-    if not company_id.strip():
-        raise HTTPException(status_code=400, detail="company_id est obligatoire")
+    company_id = current_user.company_id
 
     uc = ListDocumentsUseCase(repo)
     documents = await uc.execute(company_id)
@@ -153,12 +152,13 @@ async def list_documents(
 @inject
 async def delete_document(
     document_id: str,
-    company_id: str = Query(..., description="ID de l'entreprise"),
+    current_user: CurrentUser,
     storage=Depends(Provide[Container.file_storage]),
     repo: DocumentRepositoryPort = Depends(Provide[Container.document_repository]),
     vector_store=Depends(Provide[Container.vector_store]),
 ):
     """Supprime un document (GCS + metadonnees PostgreSQL + vecteurs)."""
+    company_id = current_user.company_id
     uc = DeleteDocumentUseCase(storage, repo, vector_store)
     try:
         await uc.execute(document_id, company_id)

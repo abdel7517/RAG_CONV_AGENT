@@ -32,3 +32,4 @@ docs/
 CLAUDE.md
 */dist
 gcs-credentials.json
+.mcp.json

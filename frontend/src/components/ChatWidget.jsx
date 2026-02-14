@@ -63,10 +63,10 @@ function TypingIndicator() {
   )
 }
 
-export function ChatWidget({ defaultEmail = '', companyId }) {
-  // Validation: companyId est obligatoire
-  if (!companyId) {
-    console.error('[ChatWidget] Erreur: companyId est requis', { companyId })
+export function ChatWidget({ defaultEmail = '', companyId, token }) {
+  // Validation: companyId et token sont obligatoires
+  if (!companyId || !token) {
+    console.error('[ChatWidget] Erreur: companyId et token sont requis', { companyId, token })
     return null
   }
 
@@ -130,12 +130,14 @@ export function ChatWidget({ defaultEmail = '', companyId }) {
     connect()
 
     try {
+      console.log('Envoi du message au backend: ' + API_URL)
       const response = await fetch(`${API_URL}/api/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({
-          company_id: companyId,  // Multi-tenant: ID entreprise
-          email,
           message: userMessage
         })
       })
