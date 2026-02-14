@@ -1,12 +1,12 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { MessageCircle, X, Send, BotMessageSquare, Minus, User, Bot } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { Skeleton } from '@/components/ui/skeleton'
+import { Button } from '@components/ui/button'
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@components/ui/card'
+import { Input } from '@components/ui/input'
+import { ScrollArea } from '@components/ui/scroll-area'
+import { Avatar, AvatarFallback } from '@components/ui/avatar'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@components/ui/tooltip'
+import { Skeleton } from '@components/ui/skeleton'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,12 +16,22 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
-import { useSSE } from '@/hooks/useSSE'
-import { cn } from '@/lib/utils'
-import { API_URL } from '@/config'
+} from '@components/ui/alert-dialog'
+import { useSSE } from '~/app/hooks/useSSE'
+import { cn } from '~/app/lib/utils'
+import { API_URL } from '~/app/config'
 
-function ChatMessage({ role, content }) {
+interface Message {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+interface ChatMessageProps {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+function ChatMessage({ role, content }: ChatMessageProps) {
   const isUser = role === 'user'
   return (
     <div className={cn(
@@ -63,7 +73,13 @@ function TypingIndicator() {
   )
 }
 
-export function ChatWidget({ defaultEmail = '', companyId, token }) {
+interface ChatWidgetProps {
+  defaultEmail?: string
+  companyId?: string
+  token?: string
+}
+
+export function ChatWidget({ defaultEmail = '', companyId, token }: ChatWidgetProps) {
   // Validation: companyId et token sont obligatoires
   if (!companyId || !token) {
     console.error('[ChatWidget] Erreur: companyId et token sont requis', { companyId, token })
@@ -73,12 +89,12 @@ export function ChatWidget({ defaultEmail = '', companyId, token }) {
   const [isOpen, setIsOpen] = useState(false)
   const [email, setEmail] = useState(defaultEmail)
   const [isConnected, setIsConnected] = useState(!!defaultEmail)
-  const [messages, setMessages] = useState([])
+  const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [currentResponse, setCurrentResponse] = useState('')
   const [showCloseAlert, setShowCloseAlert] = useState(false)
-  const messagesEndRef = useRef(null)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
   const responseBufferRef = useRef('')
 
   const scrollToBottom = () => {
@@ -89,7 +105,7 @@ export function ChatWidget({ defaultEmail = '', companyId, token }) {
     scrollToBottom()
   }, [messages, currentResponse])
 
-  const handleSSEMessage = useCallback((data) => {
+  const handleSSEMessage = useCallback((data: { done?: boolean; chunk?: string }) => {
     if (data.done) {
       const finalContent = responseBufferRef.current + (data.chunk || '')
       if (finalContent) {
@@ -102,21 +118,21 @@ export function ChatWidget({ defaultEmail = '', companyId, token }) {
       setCurrentResponse('')
       setIsLoading(false)
     } else {
-      responseBufferRef.current += data.chunk
+      responseBufferRef.current += data.chunk || ''
       setCurrentResponse(responseBufferRef.current)
     }
   }, [])
 
   const { connect, disconnect } = useSSE(email, handleSSEMessage)
 
-  const handleConnect = (e) => {
+  const handleConnect = (e: React.FormEvent) => {
     e.preventDefault()
     if (email.trim()) {
       setIsConnected(true)
     }
   }
 
-  const handleSendMessage = async (e) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim() || isLoading) return
 
@@ -138,7 +154,8 @@ export function ChatWidget({ defaultEmail = '', companyId, token }) {
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          message: userMessage
+          message: userMessage,
+          email: email
         })
       })
 
@@ -195,7 +212,7 @@ export function ChatWidget({ defaultEmail = '', companyId, token }) {
 
       {/* Panel de chat */}
       {isOpen && (
-        <Card className="w-[380px] h-[500px] mb-4 flex flex-col shadow-xl animate-in slide-in-from-bottom-5 duration-1000 ease-out">
+        <Card className="w-[380px] h-[500px] mb-4 flex flex-col shadow-xl">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3 border-b">
             <CardTitle className="text-lg font-semibold flex items-center gap-2">
               <span className="text-xl"><BotMessageSquare /></span> Assistant
@@ -286,23 +303,22 @@ export function ChatWidget({ defaultEmail = '', companyId, token }) {
           <TooltipTrigger asChild>
             <Button
               onClick={() => isOpen ? setShowCloseAlert(true) : setIsOpen(true)}
-              size="icon"
               className={cn(
                 "h-14 w-14 rounded-full shadow-lg",
-                "transition-all duration-[8000ms] ease-[cubic-bezier(0.25,0.1,0.25,1)]",
+                "transition-all duration-300",
                 "hover:scale-110 hover:shadow-xl",
                 isOpen && "bg-destructive hover:bg-destructive/90 rotate-180"
               )}
             >
               {isOpen ? (
-                <X className="h-6 w-6 transition-transform duration-[8000ms]" />
+                <X className="h-6 w-6" />
               ) : (
-                <MessageCircle className="h-6 w-6 transition-transform duration-[8000ms]" />
+                <MessageCircle className="h-6 w-6" />
               )}
             </Button>
           </TooltipTrigger>
           <TooltipContent side="left">
-            <p>{isOpen ? "Fermer la conversation" : "Discuter avec l'assistant"}</p>
+            <p>{isOpen ? "Fermer le chat" : "Ouvrir le chat"}</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>

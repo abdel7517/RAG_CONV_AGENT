@@ -1,12 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { Upload, Trash2, FileText, ArrowLeft, Loader2 } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Upload, Trash2, FileText, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
-import { Separator } from '@/components/ui/separator'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,7 +28,9 @@ function formatFileSize(bytes) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
 }
 
-export function DocumentsPage() {
+export function DocumentsPage({ token }) {
+  // Header Authorization pour les appels API proteges - memoized pour eviter les re-renders
+  const authHeaders = React.useMemo(() => token ? { 'Authorization': `Bearer ${token}` } : {}, [token])
   const [documents, setDocuments] = useState([])
   const [isLoading, setIsLoading] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
@@ -74,7 +74,9 @@ export function DocumentsPage() {
     setIsLoading(true)
     setError(null)
     try {
-      const res = await fetch(`${API_URL}/api/documents?company_id=${COMPANY_ID}`)
+      const res = await fetch(`${API_URL}/api/documents`, {
+        headers: authHeaders
+      })
       if (!res.ok) throw new Error()
       const data = await res.json()
       setDocuments(data.documents)
@@ -83,7 +85,7 @@ export function DocumentsPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [authHeaders])
 
   useEffect(() => {
     fetchDocuments()
@@ -108,8 +110,9 @@ export function DocumentsPage() {
       const formData = new FormData()
       formData.append('file', file)
 
-      const res = await fetch(`${API_URL}/api/documents/upload?company_id=${COMPANY_ID}`, {
+      const res = await fetch(`${API_URL}/api/documents/upload`, {
         method: 'POST',
+        headers: authHeaders,
         body: formData,
       })
       if (!res.ok) {
@@ -143,8 +146,11 @@ export function DocumentsPage() {
       })
 
       const res = await fetch(
-        `${API_URL}/api/documents/${deleteTarget.document_id}?company_id=${COMPANY_ID}`,
-        { method: 'DELETE' }
+        `${API_URL}/api/documents/${deleteTarget.document_id}`,
+        {
+          method: 'DELETE',
+          headers: authHeaders
+        }
       )
       if (!res.ok) throw new Error('Erreur lors de la suppression')
       setDeleteTarget(null)
@@ -160,13 +166,6 @@ export function DocumentsPage() {
       <header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container mx-auto px-4">
           <div className="flex h-16 items-center gap-4">
-            <Link to="/">
-              <Button variant="ghost" size="sm">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Retour
-              </Button>
-            </Link>
-            <Separator orientation="vertical" className="h-6" />
             <h1 className="text-lg font-semibold">Gestion des Documents</h1>
           </div>
         </div>
