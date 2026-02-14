@@ -131,6 +131,12 @@ CE QUI SUIT APRES NE DOIT PAS ETRE INCLUS DANS LE PROMPT SYSTEME MAIS DANS CHAQU
     CHANNEL_TYPE: str = os.getenv("CHANNEL_TYPE", "redis")  # "redis" ou "memory"
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379")
 
+    # === CONFIGURATION JWT ===
+    # Generate SECRET_KEY with: openssl rand -hex 32
+    JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7")
+    JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+
     @classmethod
     def get_postgres_uri(cls) -> str:
         """

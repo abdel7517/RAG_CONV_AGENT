@@ -30,6 +30,10 @@ pydantic[email]>=2.0.0
 # Dependency Injection
 dependency-injector>=4.40.0
 
+# Authentication JWT
+pyjwt>=2.8.0
+passlib[bcrypt]>=1.7.4
+
 # Google Cloud Storage
 google-cloud-storage>=2.14.0
 python-multipart>=0.0.6

@@ -25,7 +25,10 @@ async def stream_response(
 
     Le client se connecte a ce endpoint et recoit les chunks de reponse
     au fur et a mesure qu'ils sont publies sur outbox:{email}.
+
+    Note: Endpoint public car EventSource ne supporte pas les headers Authorization.
     """
+
     async def event_generator():
         channel = f"outbox:{email}"
 

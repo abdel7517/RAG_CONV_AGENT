@@ -16,6 +16,8 @@ from backend.infrastructure.adapters.pypdf_analyzer_adapter import PypdfAnalyzer
 from backend.infrastructure.adapters.arq_job_queue_adapter import ArqJobQueueAdapter
 from backend.infrastructure.adapters.arq_job_queue_adapter import parse_redis_settings
 from backend.infrastructure.repositories.document_repository import PostgresDocumentRepository
+from backend.infrastructure.repositories.user_repository import PostgresUserRepository
+from backend.infrastructure.repositories.company_repository import PostgresCompanyRepository
 from src.infrastructure.adapters.pgvector_adapter import PGVectorAdapter
 
 
@@ -37,6 +39,8 @@ class Container(containers.DeclarativeContainer):
             "backend.routes.chat",
             "backend.routes.stream",
             "backend.routes.documents",
+            "backend.routes.auth",
+            "backend.routes.dependencies",
         ]
     )
 
@@ -89,3 +93,17 @@ class Container(containers.DeclarativeContainer):
         PGVectorAdapter,
     )
     """Vector store pour les embeddings (Singleton)."""
+
+    # =========================================================================
+    # USER MANAGEMENT
+    # =========================================================================
+
+    user_repository = providers.Singleton(
+        PostgresUserRepository,
+    )
+    """Repository utilisateurs (Singleton)."""
+
+    company_repository = providers.Singleton(
+        PostgresCompanyRepository,
+    )
+    """Repository entreprises (Singleton)."""

@@ -27,10 +27,12 @@ def _create_companies_table() -> None:
     CREATE TABLE IF NOT EXISTS companies (
         company_id VARCHAR(255) PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
+        api_key VARCHAR(64) UNIQUE NOT NULL,
         tone VARCHAR(255) DEFAULT 'professionnel et courtois',
         plan VARCHAR(50) DEFAULT 'free',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE INDEX IF NOT EXISTS idx_companies_api_key ON companies(api_key);
     """
 
     with psycopg.connect(settings.get_postgres_uri()) as conn:
@@ -60,6 +62,31 @@ def _create_documents_table() -> None:
     );
     CREATE INDEX idx_documents_company_id ON documents(company_id);
     CREATE INDEX idx_documents_status ON documents(status);
+    """
+
+    with psycopg.connect(settings.get_postgres_uri()) as conn:
+        with conn.cursor() as cur:
+            cur.execute(create_table_sql)
+        conn.commit()
+
+
+def _create_users_table() -> None:
+    """
+    Cree la table users pour l'authentification JWT.
+    Multi-tenant via company_id.
+    """
+    create_table_sql = """
+    CREATE TABLE IF NOT EXISTS users (
+        user_id VARCHAR(36) PRIMARY KEY,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        hashed_password VARCHAR(255) NOT NULL,
+        company_id VARCHAR(255) NOT NULL,
+        full_name VARCHAR(255),
+        disabled BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+    CREATE INDEX IF NOT EXISTS idx_users_company_id ON users(company_id);
     """
 
     with psycopg.connect(settings.get_postgres_uri()) as conn:
@@ -114,12 +141,18 @@ def setup_postgres() -> bool:
             _create_documents_table()
             print("Table documents creee avec succes!")
 
+            # Creer la table users pour l'authentification JWT
+            print("\nCreation de la table users (authentification JWT)...")
+            _create_users_table()
+            print("Table users creee avec succes!")
+
             print("\nTables PostgreSQL creees:")
             print("  - checkpoints: Etats complets du graphe a chaque etape")
             print("  - checkpoint_writes: Ecritures intermediaires (pending writes)")
             print("  - checkpoint_blobs: Stockage de donnees volumineuses")
             print("  - companies: Configuration des entreprises (multi-tenant)")
             print("  - documents: Metadonnees des fichiers PDF (GCS)")
+            print("  - users: Utilisateurs et authentification JWT")
 
         print("\n" + "=" * 70)
         print("POSTGRESQL EST PRET!")

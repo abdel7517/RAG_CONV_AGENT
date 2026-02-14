@@ -130,6 +130,7 @@ export function ChatWidget({ defaultEmail = '', companyId }) {
     connect()
 
     try {
+      console.log('Envoi du message au backend: ' + API_URL)
       const response = await fetch(`${API_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

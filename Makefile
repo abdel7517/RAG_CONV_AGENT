@@ -117,6 +117,9 @@ prod-with-ollama: ## Lancer en production avec Ollama
 local: ## Lancer en local avec nginx frontend
 	docker compose --profile local up -d
 
+build-local: ## Builder les images pour le profile local
+	docker compose --profile local build
+
 # =============================================================================
 # Database
 # =============================================================================
